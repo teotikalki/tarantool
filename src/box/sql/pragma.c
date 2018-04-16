@@ -428,20 +428,8 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 				pIdx = sqlite3LocateIndex(db, zRight, zTable);
 				if (pIdx) {
 					int i;
-					int mx;
-					if (pPragma->iArg) {
-						/* PRAGMA index_xinfo (newer
-						 * version with more rows and
-						 * columns)
-						 */
-						pParse->nMem = 6;
-					} else {
-						/* PRAGMA index_info (legacy
-						 * version)
-						 */
-						pParse->nMem = 3;
-					}
-					mx = pIdx->def->key_def->part_count;
+					int mx = pIdx->def->key_def->part_count;
+					pParse->nMem = 7;
 					assert(pParse->nMem <=
 					       pPragma->nPragCName);
 					struct key_part *part =
@@ -449,35 +437,34 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 					for (i = 0; i < mx; i++, part++) {
 						i16 cnum = (int) part->fieldno;
 						assert(pIdx->pTable);
+						const char *c_n;
+						uint32_t id = part->coll_id;
+						struct coll *coll = part->coll;
+						if (coll != NULL)
+							c_n = coll_by_id(id)->
+							      name;
+						else
+							c_n = "BINARY";
+						enum field_type type = pIdx->
+								       pTable->
+								       def->
+								       fields
+								       [cnum].
+								       type;
 						sqlite3VdbeMultiLoad(v, 1,
-								     "iis", i,
-								     cnum,
-								     cnum <
-								     0 ? 0 :
-								     pIdx->
+								     "iisisis",
+								     i, cnum,
+								     cnum < 0 ?
+								     0 : pIdx->
 								     pTable->
-								     def->
-								     fields[cnum].
-								     name);
-						if (pPragma->iArg) {
-							const char *c_n;
-							uint32_t id =
-								part->coll_id;
-							struct coll *coll =
-								part->coll;
-							if (coll != NULL)
-								c_n = coll_by_id(id)->name;
-							else
-								c_n = "BINARY";
-							sqlite3VdbeMultiLoad(v,
-									     4,
-									     "isi",
-									     part->
-									     sort_order,
-									     c_n,
-									     i <
-									     mx);
-						}
+								     def->fields
+								     [cnum].
+								     name, part->
+								     sort_order,
+								     c_n,
+								     i < mx,
+								     field_type_strs
+								     [type]);
 						sqlite3VdbeAddOp2(v,
 								  OP_ResultRow,
 								  1,
@@ -486,7 +473,8 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 				}
 			}
 			break;
-		}
+	}
+
 	case PragTyp_INDEX_LIST:{
 			if (zRight) {
 				Index *pIdx;
