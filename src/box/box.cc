@@ -73,6 +73,7 @@
 #include "call.h"
 #include "func.h"
 #include "sequence.h"
+#include "promote.h"
 
 static char status[64] = "unknown";
 
@@ -214,6 +215,12 @@ box_set_ro(bool ro)
 {
 	is_ro = ro;
 	fiber_cond_broadcast(&ro_cond);
+}
+
+void
+box_expose_ro()
+{
+	cfg_rawsetb("read_only", is_ro);
 }
 
 bool
@@ -1621,6 +1628,7 @@ box_free(void)
 		gc_free();
 		engine_shutdown();
 		wal_thread_stop();
+		box_ctl_promote_free();
 	}
 
 	fiber_cond_destroy(&ro_cond);
@@ -1988,6 +1996,7 @@ box_cfg_xc(void)
 	port_init();
 	iproto_init();
 	wal_thread_start();
+	box_ctl_promote_init();
 
 	title("loading");
 
