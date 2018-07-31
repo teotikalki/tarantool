@@ -610,6 +610,11 @@ int sqlite3VdbeExec(Vdbe *p)
 	u64 start;                 /* CPU clock count at start of opcode */
 #endif
 	struct session *user_session = current_session();
+	/*
+	 * Field sql_last_insert_id of current session should be
+	 * set no more than once for each statement.
+	 */
+	p->is_last_insert_id_set = false;
 	/*** INSERT STACK UNION HERE ***/
 
 	assert(p->magic==VDBE_MAGIC_RUN);  /* sqlite3_step() verifies this */
@@ -1177,6 +1182,13 @@ case OP_NextAutoincValue: {
 	pOut = out2Prerelease(p, pOp);
 	pOut->flags = MEM_Int;
 	pOut->u.i = value;
+
+	/* Set sql_last_insert_id of current session. */
+	if (!p->is_last_insert_id_set) {
+		struct session *session = current_session();
+		session->sql_last_insert_id = value;
+		p->is_last_insert_id_set = true;
+	}
 
 	break;
 }

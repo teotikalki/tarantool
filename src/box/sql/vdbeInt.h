@@ -393,6 +393,11 @@ struct Vdbe {
 	bft changeCntOn:1;	/* True to update the change-counter */
 	bft runOnlyOnce:1;	/* Automatically expire on reset */
 	bft isPrepareV2:1;	/* True if prepared with prepare_v2() */
+	/*
+	 * True if field last_insert_id of current session was set
+	 * in current statement.
+	 */
+	bool is_last_insert_id_set : 1;
 	u32 aCounter[5];	/* Counters used by sqlite3_stmt_status() */
 	char *zSql;		/* Text of the SQL statement that generated this */
 	void *pFree;		/* Free this when deleting the vdbe */
