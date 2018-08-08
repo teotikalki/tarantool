@@ -610,8 +610,10 @@ tarantool_lua_run_script(char *path, bool interactive,
 	 * To work this problem around we must run init script in
 	 * a separate fiber.
 	 */
-
-	script_fiber = fiber_new(title, run_script_f);
+	struct fiber_attr fiber_attr =
+		{.stack_size = 0x8000 * 4,
+		 .flags = FIBER_DEFAULT_FLAGS | FIBER_CUSTOM_STACK};
+	script_fiber = fiber_new_ex(title, &fiber_attr, run_script_f);
 	if (script_fiber == NULL)
 		panic("%s", diag_last_error(diag_get())->errmsg);
 	fiber_start(script_fiber, tarantool_L, path, interactive,
