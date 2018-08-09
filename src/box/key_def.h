@@ -74,6 +74,17 @@ struct key_part {
 	struct coll *coll;
 	/** True if a part can store NULLs. */
 	bool is_nullable;
+	/**
+	 * Epoch of offset slot cache. Initialized with
+	 * incremental epoch of format on caching it's field's
+	 * offset_slot via tuple_field_by_part_raw to speed up
+	 * access on subsequent calls with same format.
+	 * Cache is expected to use "the eldest format is most
+	 * relevant" strategy.
+	 */
+	uint64_t offset_slot_epoch;
+	/** Cache with format's field offset slot. */
+	int32_t offset_slot;
 };
 
 struct key_def;

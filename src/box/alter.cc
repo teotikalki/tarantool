@@ -1032,6 +1032,42 @@ ModifySpace::~ModifySpace()
 		space_def_delete(new_def);
 }
 
+class ModifySpaceFormat: public AlterSpaceOp
+{
+public:
+    ModifySpaceFormat(struct alter_space *alter) : AlterSpaceOp(alter) {}
+    virtual void alter(struct alter_space *alter);
+};
+
+void
+ModifySpaceFormat:: alter(struct alter_space * alter)
+{
+	struct tuple_format *format = alter->new_space != NULL ?
+				      alter->new_space->format : NULL;
+	if (format == NULL)
+		return;
+	struct rlist *key_list = &alter->key_list;
+	bool is_format_epoch_changed = false;
+	struct index_def *index_def;
+	rlist_foreach_entry(index_def, key_list, link) {
+		struct key_part *part = index_def->key_def->parts;
+		struct key_part *parts_end =
+			part + index_def->key_def->part_count;
+		for (; part < parts_end; part++) {
+			struct tuple_field *field =
+				&format->fields[part->fieldno];
+			if (field->offset_slot != part->offset_slot)
+				is_format_epoch_changed = true;
+		}
+	}
+	format->epoch = alter->old_space != NULL &&
+			alter->old_space->format != NULL ?
+			alter->old_space->format->epoch : 1;
+	if (is_format_epoch_changed)
+		format->epoch++;
+}
+
+
 /** DropIndex - remove an index from space. */
 
 class DropIndex: public AlterSpaceOp
@@ -1316,6 +1352,7 @@ RebuildIndex::prepare(struct alter_space *alter)
 	/* Get the new index and build it.  */
 	new_index = space_index(alter->new_space, new_index_def->iid);
 	assert(new_index != NULL);
+	assert(alter->new_space != NULL && alter->old_space != NULL);
 	space_build_index_xc(alter->old_space, new_index,
 			     alter->new_space->format);
 }
@@ -1922,6 +1959,7 @@ on_replace_dd_index(struct trigger * /* trigger */, void *event)
 			index_def_guard.is_active = false;
 		}
 	}
+	(void) new ModifySpaceFormat(alter);
 	/*
 	 * Create MoveIndex ops for the remaining indexes in the
 	 * old space.
