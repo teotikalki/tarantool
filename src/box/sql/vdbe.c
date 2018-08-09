@@ -568,6 +568,23 @@ out2Prerelease(Vdbe *p, VdbeOp *pOp)
 }
 
 /*
+ * Inserted in current query record.
+ */
+struct inserted_record
+{
+	/* Reference to previous record */
+	struct inserted_record *prev;
+	/* Space in which record was inserted */
+	struct space *space;
+	/* Length of packed primary key of record */
+	uint32_t len;
+	/* Flag to decrease nChanges if needed */
+	bool is_changes_increased;
+	/* Packed primary key of record */
+	char key[0];
+};
+
+/*
  * Execute as much of a VDBE program as we can.
  * This is the core of sqlite3_step().
  */
@@ -599,6 +616,7 @@ int sqlite3VdbeExec(Vdbe *p)
 	u64 start;                 /* CPU clock count at start of opcode */
 #endif
 	struct session *user_session = current_session();
+	struct inserted_record *inserted_record = NULL;
 	/*** INSERT STACK UNION HERE ***/
 
 	assert(p->magic==VDBE_MAGIC_RUN);  /* sqlite3_step() verifies this */
@@ -4352,6 +4370,28 @@ case OP_SInsert: {
 		goto abort_due_to_error;
 	if (pOp->p5 & OPFLAG_NCHANGE)
 		p->nChange++;
+
+	uint32_t key_size;
+	char *key = tuple_extract_key_raw(pIn2->z, pIn2->z + pIn2->n,
+					  space->index[0]->def->key_def,
+					  &key_size);
+	if (key == NULL) {
+		rc = SQLITE_NOMEM_BKPT;
+		goto abort_due_to_error;
+	}
+	struct inserted_record *tmp =
+		(struct inserted_record *)malloc(sizeof(*tmp) + key_size);
+	if (tmp == NULL) {
+		rc = SQLITE_NOMEM_BKPT;
+		goto abort_due_to_error;
+	}
+	tmp->prev = inserted_record;
+	tmp->space = space;
+	tmp->len = key_size;
+	tmp->is_changes_increased = pOp->p5 & OPFLAG_NCHANGE;
+	memcpy(tmp->key, key, key_size);
+
+	inserted_record = tmp;
 	break;
 }
 
@@ -5344,6 +5384,15 @@ default: {          /* This is really OP_Noop and OP_Explain */
 	 * an error of some kind.
 	 */
 abort_due_to_error:
+	while (inserted_record != NULL) {
+		sql_delete_by_key(inserted_record->space, inserted_record->key,
+				  inserted_record->len);
+		if (inserted_record->is_changes_increased)
+			p->nChange--;
+		struct inserted_record *tmp = inserted_record->prev;
+		free(inserted_record);
+		inserted_record = tmp;
+	}
 	if (db->mallocFailed) rc = SQLITE_NOMEM_BKPT;
 	assert(rc);
 	if (p->zErrMsg==0 && rc!=SQLITE_IOERR_NOMEM) {
@@ -5372,6 +5421,11 @@ abort_due_to_error:
 
 	/* This is the only way out of this procedure. */
 vdbe_return:
+	while (inserted_record != NULL) {
+		struct inserted_record *tmp = inserted_record->prev;
+		free(inserted_record);
+		inserted_record = tmp;
+	}
 	testcase( nVmStep>0);
 	p->aCounter[SQLITE_STMTSTATUS_VM_STEP] += (int)nVmStep;
 	assert(rc!=SQLITE_OK || nExtraDelete==0

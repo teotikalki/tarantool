@@ -25,3 +25,18 @@ box.sql.execute("INSERT INTO zzzoobar VALUES (111, 222, 'c3', 444)")
 
 -- Debug
 -- require("console").start()
+
+-- gh-3592: net.box segmentation fault after "create table" with
+-- autoincrement
+test_run = require('test_run').new()
+box.schema.user.create('tmp')
+box.schema.user.grant('tmp', 'create', 'space')
+box.schema.user.grant('tmp', 'write', 'space', '_space')
+box.schema.user.grant('tmp', 'write', 'space', '_schema')
+box.session.su('tmp')
+-- Error - nothing should be created
+box.sql.execute('create table t (id integer primary key, a integer)')
+box.space.T
+box.sql.execute('drop table t')
+test_run:cmd('restart server default');
+box.schema.user.drop('tmp')
