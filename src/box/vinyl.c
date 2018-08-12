@@ -2329,7 +2329,7 @@ vinyl_engine_prepare(struct engine *engine, struct txn *txn)
 	 * the transaction to be sent to read view or aborted, we call
 	 * it before checking for conflicts.
 	 */
-	if (vy_quota_use(&env->quota, tx->write_size, timeout) != 0) {
+	if (vy_quota_try_use(&env->quota, tx->write_size, timeout) != 0) {
 		diag_set(ClientError, ER_VY_QUOTA_TIMEOUT);
 		return -1;
 	}
@@ -2341,21 +2341,7 @@ vinyl_engine_prepare(struct engine *engine, struct txn *txn)
 	size_t mem_used_after = lsregion_used(&env->mem_env.allocator);
 	assert(mem_used_after >= mem_used_before);
 	size_t write_size = mem_used_after - mem_used_before;
-	/*
-	 * Insertion of a statement into an in-memory tree can trigger
-	 * an allocation of a new tree block. This should not normally
-	 * result in a noticeable excess of the memory limit, because
-	 * most memory is occupied by statements anyway, but we need to
-	 * adjust the quota accordingly in this case.
-	 *
-	 * The actual allocation size can also be less than reservation
-	 * if a statement is allocated from an lsregion slab allocated
-	 * by a previous transaction. Take this into account, too.
-	 */
-	if (write_size >= tx->write_size)
-		vy_quota_force_use(&env->quota, write_size - tx->write_size);
-	else
-		vy_quota_release(&env->quota, tx->write_size - write_size);
+	vy_quota_commit_use(&env->quota, tx->write_size, write_size);
 
 	if (rc != 0)
 		return -1;
@@ -2512,7 +2498,7 @@ vy_env_dump_complete_cb(struct vy_scheduler *scheduler,
 	size_t mem_used_after = lsregion_used(allocator);
 	assert(mem_used_after <= mem_used_before);
 	size_t mem_dumped = mem_used_before - mem_used_after;
-	vy_quota_release(quota, mem_dumped);
+	vy_quota_dump(quota, mem_dumped);
 
 	say_info("dumped %zu bytes in %.1f sec", mem_dumped, dump_duration);
 
@@ -3214,7 +3200,7 @@ vinyl_space_apply_initial_join_row(struct space *space, struct request *request)
 	 * quota accounting.
 	 */
 	size_t reserved = tx->write_size;
-	if (vy_quota_use(&env->quota, reserved, TIMEOUT_INFINITY) != 0)
+	if (vy_quota_try_use(&env->quota, reserved, TIMEOUT_INFINITY) != 0)
 		unreachable();
 
 	size_t mem_used_before = lsregion_used(&env->mem_env.allocator);
@@ -3233,11 +3219,7 @@ vinyl_space_apply_initial_join_row(struct space *space, struct request *request)
 	size_t mem_used_after = lsregion_used(&env->mem_env.allocator);
 	assert(mem_used_after >= mem_used_before);
 	size_t used = mem_used_after - mem_used_before;
-	if (used >= reserved)
-		vy_quota_force_use(&env->quota, used - reserved);
-	else
-		vy_quota_release(&env->quota, reserved - used);
-
+	vy_quota_commit_use(&env->quota, reserved, used);
 	return rc;
 }
 
