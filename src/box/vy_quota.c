@@ -56,6 +56,17 @@ enum {
 	VY_QUOTA_RATE_AVG_PERIOD = 5,
 };
 
+/**
+ * Wake up the next fiber in the line waiting for quota
+ * provided quota is available.
+ */
+static inline void
+vy_quota_signal(struct vy_quota *q)
+{
+	if (q->used < q->limit)
+		fiber_cond_signal(&q->cond);
+}
+
 static void
 vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 {
@@ -159,7 +170,7 @@ vy_quota_set_limit(struct vy_quota *q, size_t limit)
 	q->limit = q->watermark = limit;
 	if (q->used >= limit)
 		q->quota_exceeded_cb(q);
-	fiber_cond_signal(&q->cond);
+	vy_quota_signal(q);
 }
 
 void
@@ -176,7 +187,7 @@ vy_quota_dump(struct vy_quota *q, size_t size, double duration)
 {
 	assert(q->used >= size);
 	q->used -= size;
-	fiber_cond_signal(&q->cond);
+	vy_quota_signal(q);
 
 	/* Account dump bandwidth. */
 	if (duration > 0)
@@ -206,7 +217,7 @@ vy_quota_try_use(struct vy_quota *q, size_t size, double timeout)
 		q->quota_exceeded_cb(q);
 
 	/* Wake up the next fiber in the line waiting for quota. */
-	fiber_cond_signal(&q->cond);
+	vy_quota_signal(q);
 	return 0;
 }
 
@@ -221,7 +232,7 @@ vy_quota_commit_use(struct vy_quota *q, size_t reserved, size_t used)
 			q->use_curr -= excess;
 		else /* was reset by timeout */
 			q->use_curr = 0;
-		fiber_cond_signal(&q->cond);
+		vy_quota_signal(q);
 	}
 	if (reserved < used)
 		vy_quota_force_use(q, used - reserved);
