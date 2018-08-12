@@ -43,18 +43,17 @@
 #include "histogram.h"
 #include "trivia/util.h"
 
-enum {
-	/**
-	 * Time interval between successive updates of
-	 * quota watermark and use rate, in seconds.
-	 */
-	VY_QUOTA_UPDATE_INTERVAL = 1,
-	/**
-	 * Period of time over which the quota use rate
-	 * is averaged, in seconds.
-	 */
-	VY_QUOTA_RATE_AVG_PERIOD = 5,
-};
+/**
+ * Time interval between successive updates of quota watermark
+ * and use rate, in seconds.
+ */
+static const double VY_QUOTA_UPDATE_INTERVAL = 0.1;
+
+/**
+ * Period of time over which the quota use rate is averaged,
+ * in seconds.
+ */
+static const double VY_QUOTA_RATE_AVG_PERIOD = 5;
 
 /*
  * Until we dump anything, assume bandwidth to be 10 MB/s,
@@ -154,7 +153,7 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	 * Update the quota use rate with the new measurement.
 	 */
 	const double weight = 1 - exp(-VY_QUOTA_UPDATE_INTERVAL /
-				      (double)VY_QUOTA_RATE_AVG_PERIOD);
+				      VY_QUOTA_RATE_AVG_PERIOD);
 	q->use_rate = (1 - weight) * q->use_rate +
 		weight * q->use_curr / VY_QUOTA_UPDATE_INTERVAL;
 	q->use_curr = 0;
