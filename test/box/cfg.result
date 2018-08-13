@@ -26,6 +26,8 @@ cfg_filter(box.cfg)
     - false
   - - hot_standby
     - false
+  - - ignore_space_formats
+    - false
   - - listen
     - <hidden>
   - - log
@@ -114,6 +116,8 @@ cfg_filter(box.cfg)
   - - force_recovery
     - false
   - - hot_standby
+    - false
+  - - ignore_space_formats
     - false
   - - listen
     - <hidden>
