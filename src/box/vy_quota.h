@@ -91,6 +91,8 @@ struct vy_quota {
 	 * moving average of use_curr.
 	 */
 	size_t use_rate;
+	/** Current dump bandwidth estimate. */
+	size_t dump_bw;
 	/**
 	 * Dump bandwidth is needed for calculating the quota watermark.
 	 * The higher the bandwidth, the later we can start dumping w/o
@@ -110,10 +112,6 @@ vy_quota_create(struct vy_quota *q, vy_quota_exceeded_f quota_exceeded_cb);
 
 void
 vy_quota_destroy(struct vy_quota *q);
-
-/** Return quota dump bandwidth. */
-size_t
-vy_quota_dump_bandwidth(struct vy_quota *q);
 
 /**
  * Set memory limit. If current memory usage exceeds
