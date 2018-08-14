@@ -29,9 +29,9 @@ done < "$1"
 # The following are the extra token codes to be added.  SPACE and
 # ILLEGAL *must* be the last two token codes and they must be in that order.
 extras="            \
-    TO_TEXT         \
     ISNULL          \
     NOTNULL         \
+    TO_TEXT         \
     TO_BLOB         \
     TO_NUMERIC      \
     TO_INT          \

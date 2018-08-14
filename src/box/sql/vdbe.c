@@ -600,6 +600,9 @@ int sqlite3VdbeExec(Vdbe *p)
 	u64 start;                 /* CPU clock count at start of opcode */
 #endif
 	struct session *user_session = current_session();
+	/* Opcode to where we should jump on error. */
+	int op_clean_on_error = p->nOp - 1;
+	int saved_rc = 0;
 	/*** INSERT STACK UNION HERE ***/
 
 	assert(p->magic==VDBE_MAGIC_RUN);  /* sqlite3_step() verifies this */
@@ -656,7 +659,7 @@ int sqlite3VdbeExec(Vdbe *p)
 		/* Errors are detected by individual opcodes, with an immediate
 		 * jumps to abort_due_to_error.
 		 */
-		assert(rc==SQLITE_OK);
+		// assert(rc==SQLITE_OK);
 
 		assert(pOp>=aOp && pOp<&aOp[p->nOp]);
 #ifdef VDBE_PROFILE
@@ -835,6 +838,19 @@ case OP_Gosub: {            /* jump */
 			jump_to_p2:
 	pOp = &aOp[pOp->p2 - 1];
 	break;
+	/*
+	 * Jump to destructors that will delete all created
+	 * records in system spaces.
+	 */
+			jump_to_destructors:
+	saved_rc = rc;
+	pOp = &aOp[op_clean_on_error - 1];
+	break;
+}
+
+case OP_Error: {
+	rc = saved_rc;
+	goto abort_due_to_error;
 }
 
 /* Opcode:  Return P1 * * * *
@@ -4321,9 +4337,13 @@ case OP_SInsert: {
 	assert(space_is_system(space));
 	rc = tarantoolSqlite3Insert(space, pIn2->z, pIn2->z + pIn2->n);
 	if (rc)
-		goto abort_due_to_error;
+		goto jump_to_destructors;
 	if (pOp->p5 & OPFLAG_NCHANGE)
 		p->nChange++;
+	/* OP_SDelete - destructors of newly created record. */
+	op_clean_on_error--;
+	/* OP_MakeRecord - make key for destructor. */
+	op_clean_on_error--;
 	break;
 }
 
@@ -4333,8 +4353,11 @@ case OP_SInsert: {
  * This opcode is used only during DDL routine.
  * Delete entry with given key from system space.
  *
+ * If P5 is set ot OPFLAG_DESTRUCTOR, removed record was created
+ * in current query. Shouldn't change rc in this case.
  * If P5 is set to OPFLAG_NCHANGE, account overall changes
- * made to database.
+ * made to database. It decreases in case OPFLAG_DESTRUCTOR is set
+ * and increases in other case.
  */
 case OP_SDelete: {
 	assert(pOp->p1 > 0);
@@ -4344,11 +4367,23 @@ case OP_SDelete: {
 	struct space *space = space_by_id(pOp->p1);
 	assert(space != NULL);
 	assert(space_is_system(space));
-	rc = sql_delete_by_key(space, pIn2->z, pIn2->n);
-	if (rc)
-		goto abort_due_to_error;
-	if (pOp->p5 & OPFLAG_NCHANGE)
-		p->nChange++;
+	int tmp_rc = sql_delete_by_key(space, pIn2->z, pIn2->n);
+	if ((pOp->p5 & OPFLAG_DESTRUCTOR) == 0) {
+		rc = tmp_rc;
+		if (rc)
+			goto abort_due_to_error;
+		if (pOp->p5 & OPFLAG_NCHANGE)
+			p->nChange++;
+	} else {
+		if (tmp_rc)
+			goto abort_due_to_error;
+		/* If string given than this is name of table. */
+		if ((pOp->p5 & OPFLAG_CLEAR_HASH) != 0)
+			sqlite3HashInsert(&db->pSchema->tblHash, pOp->p4.z, 0);
+		/* TODO: idxHash clearance should be here ... */
+		if (pOp->p5 & OPFLAG_NCHANGE)
+			p->nChange--;
+	}
 	break;
 }
 

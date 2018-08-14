@@ -54,6 +54,43 @@
 #include "box/schema.h"
 #include "box/tuple_format.h"
 #include "box/coll_id_cache.h"
+#include "fiber.h"
+
+static struct saved_records
+{
+	struct saved_records *prev;
+	char *name;
+	int space_id;
+	int record_id;
+	int record_key;
+	int flag_nchange;
+} *saved_records = NULL;
+
+int
+save_record(Parse *parser, int space_id, int record_id, int record_key,
+	    int flag_nchange, char *name)
+{
+	/* Why it doesn't work with region? */
+	struct saved_records *tmp = region_alloc(&parser->region, sizeof(*tmp));
+	// struct saved_records *tmp = malloc(sizeof(*tmp));
+	if (tmp == NULL) {
+		diag_set(OutOfMemory, sizeof(*tmp), "region_alloc",
+			 "saved_records");
+		parser->rc = SQL_TARANTOOL_ERROR;
+		parser->nErr++;
+		return -1;
+	}
+	tmp->prev = saved_records;
+	tmp->name = name;
+	tmp->space_id = space_id;
+	tmp->record_id = record_id;
+	tmp->record_key = record_key;
+	tmp->flag_nchange = flag_nchange | OPFLAG_DESTRUCTOR;
+	if (name != NULL)
+		tmp->flag_nchange |= OPFLAG_CLEAR_HASH;
+	saved_records = tmp;
+	return 0;
+}
 
 void
 sql_finish_coding(struct Parse *parse_context)
@@ -62,6 +99,28 @@ sql_finish_coding(struct Parse *parse_context)
 	struct sqlite3 *db = parse_context->db;
 	struct Vdbe *v = sqlite3GetVdbe(parse_context);
 	sqlite3VdbeAddOp0(v, OP_Halt);
+	/* TODO: Add destructors before OP_Error. */
+	struct saved_records *destructors = saved_records;
+	while (destructors != NULL) {
+		int record_reg = ++parse_context->nMem;
+		sqlite3VdbeAddOp3(v, OP_MakeRecord, destructors->record_id,
+				  destructors->record_key, record_reg);
+		sqlite3VdbeAddOp2(v, OP_SDelete, destructors->space_id,
+				  record_reg);
+		/*
+		 * If name is given than it is the name of table
+		 * to delete and should be removed from tblHash.
+		 */
+		if (destructors->name != NULL)
+			/*
+			 * Why STATIC actually works?
+			 * Shouldn't it be DYNAMIC?
+			 */
+			sqlite3VdbeAppendP4(v, destructors->name, P4_STATIC);
+		sqlite3VdbeChangeP5(v, destructors->flag_nchange);
+		destructors = destructors->prev;
+	}
+	sqlite3VdbeAddOp0(v, OP_Error);
 	if (db->mallocFailed || parse_context->nErr != 0) {
 		if (parse_context->rc == SQLITE_OK)
 			parse_context->rc = SQLITE_ERROR;
@@ -1301,9 +1360,17 @@ createIndex(Parse * pParse, Index * pIndex, int iSpaceId, int iIndexId,
 			  SQL_SUBTYPE_MSGPACK,zParts, P4_STATIC);
 	sqlite3VdbeAddOp3(v, OP_MakeRecord, iFirstCol, 6, iRecord);
 	sqlite3VdbeAddOp2(v, OP_SInsert, BOX_INDEX_ID, iRecord);
+	int flag_nchange = 0;
 	if (pIndex->index_type == SQL_INDEX_TYPE_NON_UNIQUE ||
-	    pIndex->index_type == SQL_INDEX_TYPE_UNIQUE)
+	    pIndex->index_type == SQL_INDEX_TYPE_UNIQUE) {
 		sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
+		flag_nchange = OPFLAG_NCHANGE;
+	}
+	/*
+	 * Here we should give name of index, but idxHash will be
+	 * removed, so let's just leave as it is for now.
+	 */
+	save_record(pParse, BOX_INDEX_ID, iFirstCol, 2, flag_nchange, NULL);
 }
 
 /*
@@ -1402,6 +1469,8 @@ createSpace(Parse * pParse, int iSpaceId, char *zStmt)
 	sqlite3VdbeAddOp3(v, OP_MakeRecord, iFirstCol, 7, iRecord);
 	sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SPACE_ID, iRecord);
 	sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
+	save_record(pParse, BOX_SPACE_ID, iFirstCol, 1, OPFLAG_NCHANGE,
+		    p->def->name);
 }
 
 /*
@@ -1628,6 +1697,8 @@ vdbe_emit_fkey_create(struct Parse *parse_context, const struct fkey_def *fk)
 	sqlite3VdbeAddOp2(vdbe, OP_SInsert, BOX_FK_CONSTRAINT_ID,
 			  constr_tuple_reg + 9);
 	sqlite3VdbeChangeP5(vdbe, OPFLAG_NCHANGE);
+	save_record(parse_context, BOX_FK_CONSTRAINT_ID, constr_tuple_reg, 2,
+		    OPFLAG_NCHANGE, NULL);
 	sqlite3ReleaseTempRange(parse_context, constr_tuple_reg, 10);
 }
 
@@ -1805,12 +1876,16 @@ sqlite3EndTable(Parse * pParse,	/* Parse context */
 						 p->def->name);
 		sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SEQUENCE_ID,
 				  reg_seq_record);
+		save_record(pParse, BOX_SEQUENCE_ID, reg_seq_record + 1, 1,
+			    false, NULL);
 		/* Do an insertion into _space_sequence. */
 		int reg_space_seq_record =
 			emitNewSysSpaceSequenceRecord(pParse, reg_space_id,
 						      reg_seq_id);
 		sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SPACE_SEQUENCE_ID,
 				  reg_space_seq_record);
+		save_record(pParse, BOX_SPACE_SEQUENCE_ID,
+			    reg_space_seq_record + 1, 1, false, NULL);
 	}
 
 	/*
