@@ -69,6 +69,51 @@ static const size_t VY_DEFAULT_DUMP_BANDWIDTH = 10 * 1024 * 1024;
 enum { VY_DUMP_BANDWIDTH_PCT = 10 };
 
 /**
+ * Min and max values of watermark, in percentage of limit.
+ *
+ * We set the watermark so that we can dump all memory below it
+ * before we hit the hard limit:
+ *
+ *   limit - watermark      watermark
+ *   ----------------- = --------------
+ *        use_rate       dump_bandwidth
+ *
+ * This is done that way, because due to the log structured
+ * nature of the allocator we cannot free memory in arbitrary
+ * chunks, only in whole generations, and we bump the generation
+ * counter only when a dump is triggered.  We could probably
+ * maintain more than two generations (active and the one being
+ * dumped), but that would make memory lookups more expensive
+ * (as we would have to maintain more than two in-memory trees
+ * for each index) and would also resulted in producing smaller
+ * run files, thus intensifying compaction.
+ *
+ * With such a memory dumping algorithm, setting the watermark to
+ * a value less than 50% doesn't make much sense. For instance,
+ * suppose the quota consumption rate is 3 times greater than the
+ * dump bandwidth. Then according to the formula we are supposed
+ * to set the watermark to 25%. If we did that, then by the time
+ * memory dump is complete we would have 75% of memory used up
+ * and hence would have to throttle the quota consumption rate
+ * down to one third of the dump bandwidth to avoid long stalls
+ * due to exhausted quota. Never setting watermark below 50%
+ * will give us a consistent RPS equal to the dump bandwidth.
+ *
+ * Setting the watermark to very high values (say 99%) is also
+ * not good, because in case the quota consumption rate suddenly
+ * raises we will have to throttle it to avoid stalls, and the
+ * higher the watermark the more repressive throttling we will
+ * have to exert until memory dump is complete. Limiting the max
+ * watermark to 90% can result in throttling to 1/10th of the
+ * dump bandwidth at worst, which is harsh, but tolerable (think
+ * of 1/100th for 99% watermark).
+ */
+enum {
+	VY_QUOTA_WATERMARK_MIN = 50,
+	VY_QUOTA_WATERMARK_MAX = 90,
+};
+
+/**
  * Wake up the next fiber in the line waiting for quota
  * provided quota is available.
  */
@@ -115,18 +160,18 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	q->use_curr = 0;
 
 	/*
-	 * Due to log structured nature of the lsregion allocator,
-	 * which is used for allocating statements, we cannot free
-	 * memory in chunks, only all at once. Therefore we should
-	 * configure the watermark so that by the time we hit the
-	 * limit, all memory have been dumped, i.e.
+	 * Update the quota watermark and trigger memory dump
+	 * if the watermark is exceeded.
 	 *
-	 *   limit - watermark      watermark
-	 *   ----------------- = --------------
-	 *        use_rate       dump_bandwidth
+	 * See the comment to VY_QUOTA_WATERMARK_MIN/MAX for
+	 * more details about the formula.
 	 */
 	q->watermark = ((double)q->limit * q->dump_bw /
 			(q->dump_bw + q->use_rate + 1));
+	q->watermark = MAX(q->limit * VY_QUOTA_WATERMARK_MIN / 100,
+			   q->watermark);
+	q->watermark = MIN(q->limit * VY_QUOTA_WATERMARK_MAX / 100,
+			   q->watermark);
 	vy_quota_check_watermark(q);
 }
 
