@@ -12,13 +12,13 @@ test:plan(7)
 --    May you find forgiveness for yourself and forgive others.
 --    May you share freely, never taking more than you give.
 --
--------------------------------------------------------------------------
+-----------------------------------------------------------------
 --
--- This file implements regression tests for SQLite library.  The
--- focus of this file is testing the LIKE and GLOB operators and
--- in particular the optimizations that occur to help those operators
--- run faster and that those optimizations work correctly when there
--- are both strings and blobs being tested.
+-- This file implements regression tests for SQLite library. The
+-- focus of this file is testing the LIKE operator and
+-- in particular the optimizations that occur to help this
+-- operator run faster and that those optimizations work
+-- correctly when there are both strings and blobs being tested.
 --
 -- Ticket 05f43be8fdda9fbd948d374319b99b054140bc36 shows that the following
 -- SQL was not working correctly:
@@ -70,10 +70,11 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.0",
     [[
+        PRAGMA case_sensitive_like = 1;
         CREATE TABLE t2(a PRIMARY KEY, b TEXT);
         INSERT INTO t2 SELECT a, b FROM t1;
         CREATE INDEX t2ba ON t2(b,a);
-        SELECT a, b FROM t2 WHERE b GLOB 'ab*' ORDER BY +a;
+        SELECT a, b FROM t2 WHERE b LIKE 'ab%' ORDER BY +a;
     ]], {
         -- <like3-2.0>
         1, "abc", 4, "abc"
@@ -83,7 +84,7 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.1",
     [[
-        SELECT a, b FROM t2 WHERE +b GLOB 'ab*' ORDER BY +a;
+        SELECT a, b FROM t2 WHERE +b LIKE 'ab%' ORDER BY +a;
     ]], {
         -- <like3-2.1>
         1, "abc", 4, "abc"
@@ -93,7 +94,7 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.2",
     [[
-        SELECT a, b FROM t2 WHERE b>=x'6162' AND b GLOB 'ab*'
+        SELECT a, b FROM t2 WHERE b>=x'6162' AND b LIKE 'ab%'
     ]], {
         -- <like3-2.2>
         4, "abc"
@@ -103,7 +104,7 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.3",
     [[
-        SELECT a, b FROM t2 WHERE +b>=x'6162' AND +b GLOB 'ab*'
+        SELECT a, b FROM t2 WHERE +b>=x'6162' AND +b LIKE 'ab%'
     ]], {
         -- <like3-2.3>
         4, "abc"
@@ -113,7 +114,7 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.4",
     [[
-        SELECT a, b FROM t2 WHERE b GLOB 'ab*' AND b>=x'6162'
+        SELECT a, b FROM t2 WHERE b LIKE 'ab%' AND b>=x'6162'
     ]], {
         -- <like3-2.4>
         4, "abc"
@@ -123,7 +124,8 @@ test:do_execsql_test(
 test:do_execsql_test(
     "like3-2.5",
     [[
-        SELECT a, b FROM t2 WHERE +b GLOB 'ab*' AND +b>=x'6162'
+        SELECT a, b FROM t2 WHERE +b LIKE 'ab%' AND +b>=x'6162';
+        PRAGMA case_sensitive_like = 0;
     ]], {
         -- <like3-2.5>
         4, "abc"

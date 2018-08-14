@@ -230,9 +230,10 @@ test:do_execsql_test(
 test:do_execsql_test(
     "alter-5.1",
     [[
+        PRAGMA case_sensitive_like = true;
         CREATE TABLE xyz(x PRIMARY KEY);
         ALTER TABLE xyz RENAME TO "xyz1234abc";
-        SELECT "name" FROM "_space" WHERE "name" GLOB 'xyz*';
+        SELECT "name" FROM "_space" WHERE "name" LIKE 'xyz%';
     ]], {
         -- <alter-5.1>
         "xyz1234abc"
@@ -243,7 +244,8 @@ test:do_execsql_test(
     "alter-5.2",
     [[
         ALTER TABLE "xyz1234abc" RENAME TO xyzabc;
-        SELECT "name" FROM "_space" WHERE "name" GLOB 'XYZ*';
+        SELECT "name" FROM "_space" WHERE "name" LIKE 'XYZ%';
+        PRAGMA case_sensitive_like = false;
     ]], {
         -- <alter-5.2>
         "XYZABC"
