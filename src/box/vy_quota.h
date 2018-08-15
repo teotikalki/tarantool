@@ -86,6 +86,13 @@ struct vy_quota {
 	 * true, but vy_quota_dump() hasn't been called yet.
 	 */
 	bool dump_in_progress;
+	/**
+	 * Memory usage at the time when the last dump was started
+	 * (memory dump size).
+	 */
+	size_t dump_size;
+	/** Time when the last dump was started. */
+	double dump_start;
 	/** Timer for updating quota watermark. */
 	ev_timer timer;
 	/**
@@ -93,6 +100,12 @@ struct vy_quota {
 	 * invocation of the quota timer callback.
 	 */
 	size_t use_curr;
+	/**
+	 * Maximal amount of quota that can be used between timer
+	 * callback invocations. It is set to such a value so that
+	 * the quota use rate never exceeds the dump bandwidth.
+	 */
+	size_t use_max;
 	/**
 	 * Quota use rate, in bytes per second.
 	 * Calculated as exponentially weighted

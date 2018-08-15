@@ -119,7 +119,7 @@ enum {
 static inline void
 vy_quota_signal(struct vy_quota *q)
 {
-	if (q->used < q->limit)
+	if (q->used < q->limit && q->use_curr < q->use_max)
 		fiber_cond_signal(&q->cond);
 }
 
@@ -133,6 +133,8 @@ vy_quota_check_watermark(struct vy_quota *q)
 	if (!q->dump_in_progress &&
 	    q->used >= q->watermark && q->quota_exceeded_cb(q)) {
 		q->dump_in_progress = true;
+		q->dump_size = q->used;
+		q->dump_start = ev_monotonic_now(loop());
 		say_info("dumping %zu bytes, expected rate %.1f MB/s, "
 			 "ETA %.1f s, recent write rate %.1f MB/s", q->used,
 			 (double)q->dump_bw / 1024 / 1024,
@@ -148,6 +150,7 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	(void)events;
 
 	struct vy_quota *q = timer->data;
+	double now = ev_monotonic_now(loop());
 
 	/*
 	 * Update the quota use rate with the new measurement.
@@ -157,6 +160,34 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	q->use_rate = (1 - weight) * q->use_rate +
 		weight * q->use_curr / VY_QUOTA_UPDATE_INTERVAL;
 	q->use_curr = 0;
+
+	/*
+	 * To avoid unpredictably long stalls, we must limit
+	 * the write rate when a dump is in progress so that
+	 * we don't hit the hard limit before the dump has
+	 * completed, i.e.
+	 *
+	 *   left_to_use    left_to_dump
+	 *   ----------- <= ------------
+	 *     use_rate       dump_rate
+	 */
+	if (q->dump_in_progress) {
+		size_t dumped = q->dump_bw * (now - q->dump_start);
+		size_t left_to_dump = (dumped < q->dump_size ?
+				       q->dump_size - dumped : 0);
+		size_t left_to_use = (q->used < q->limit ?
+				      q->limit - q->used : 0);
+		double max_use_rate = (left_to_use * q->dump_bw /
+				       (left_to_dump + 1));
+		if (q->use_max == SIZE_MAX)
+			say_info("throttling enabled, max write rate "
+				 "%.1f MB/s", max_use_rate / 1024 / 1024);
+		q->use_max = VY_QUOTA_UPDATE_INTERVAL * max_use_rate;
+	} else {
+		if (q->use_max < SIZE_MAX)
+			say_info("throttling disabled");
+		q->use_max = SIZE_MAX;
+	}
 
 	/*
 	 * Update the quota watermark and trigger memory dump
@@ -172,6 +203,9 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	q->watermark = MIN(q->limit * VY_QUOTA_WATERMARK_MAX / 100,
 			   q->watermark);
 	vy_quota_check_watermark(q);
+
+	/* Wake up the next throttled fiber in the line. */
+	vy_quota_signal(q);
 }
 
 int
@@ -201,11 +235,14 @@ vy_quota_create(struct vy_quota *q, vy_quota_exceeded_f quota_exceeded_cb)
 	q->watermark = SIZE_MAX;
 	q->used = 0;
 	q->use_curr = 0;
+	q->use_max = SIZE_MAX;
 	q->use_rate = 0;
 	q->too_long_threshold = TIMEOUT_INFINITY;
 	q->dump_bw = VY_DEFAULT_DUMP_BANDWIDTH;
 	q->quota_exceeded_cb = quota_exceeded_cb;
 	q->dump_in_progress = false;
+	q->dump_size = 0;
+	q->dump_start = 0;
 	fiber_cond_create(&q->cond);
 	ev_timer_init(&q->timer, vy_quota_timer_cb, 0,
 		      VY_QUOTA_UPDATE_INTERVAL);
@@ -277,7 +314,7 @@ vy_quota_try_use(struct vy_quota *q, size_t size, double timeout)
 	double deadline = start_time + timeout;
 
 	q->used += size;
-	while (q->used > q->limit) {
+	while (q->used > q->limit || q->use_curr >= q->use_max) {
 		vy_quota_check_watermark(q);
 		q->used -= size;
 		int rc = fiber_cond_wait_deadline(&q->cond, deadline);
