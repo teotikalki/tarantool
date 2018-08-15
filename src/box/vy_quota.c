@@ -79,6 +79,17 @@ vy_quota_signal(struct vy_quota *q)
 		fiber_cond_signal(&q->cond);
 }
 
+/**
+ * Trigger memory dump if memory usage is above the wateramrk
+ * and dump hasn't been triggered yet.
+ */
+static inline void
+vy_quota_check_watermark(struct vy_quota *q)
+{
+	if (!q->dump_in_progress && q->used >= q->watermark)
+		q->dump_in_progress = q->quota_exceeded_cb(q);
+}
+
 static void
 vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 {
@@ -109,8 +120,7 @@ vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
 	 */
 	q->watermark = ((double)q->limit * q->dump_bw /
 			(q->dump_bw + q->use_rate + 1));
-	if (q->used >= q->watermark)
-		q->quota_exceeded_cb(q);
+	vy_quota_check_watermark(q);
 }
 
 int
@@ -144,6 +154,7 @@ vy_quota_create(struct vy_quota *q, vy_quota_exceeded_f quota_exceeded_cb)
 	q->too_long_threshold = TIMEOUT_INFINITY;
 	q->dump_bw = VY_DEFAULT_DUMP_BANDWIDTH;
 	q->quota_exceeded_cb = quota_exceeded_cb;
+	q->dump_in_progress = false;
 	fiber_cond_create(&q->cond);
 	ev_timer_init(&q->timer, vy_quota_timer_cb, 0,
 		      VY_QUOTA_UPDATE_INTERVAL);
@@ -165,8 +176,7 @@ void
 vy_quota_set_limit(struct vy_quota *q, size_t limit)
 {
 	q->limit = q->watermark = limit;
-	if (q->used >= limit)
-		q->quota_exceeded_cb(q);
+	vy_quota_check_watermark(q);
 	vy_quota_signal(q);
 }
 
@@ -182,8 +192,7 @@ vy_quota_force_use(struct vy_quota *q, size_t size)
 {
 	q->used += size;
 	q->use_curr += size;
-	if (q->used >= q->watermark)
-		q->quota_exceeded_cb(q);
+	vy_quota_check_watermark(q);
 }
 
 void
@@ -191,6 +200,7 @@ vy_quota_dump(struct vy_quota *q, size_t size, double duration)
 {
 	assert(q->used >= size);
 	q->used -= size;
+	q->dump_in_progress = false;
 	vy_quota_signal(q);
 
 	/* Account dump bandwidth. */
@@ -211,9 +221,14 @@ vy_quota_try_use(struct vy_quota *q, size_t size, double timeout)
 {
 	double start_time = ev_monotonic_now(loop());
 	double deadline = start_time + timeout;
-	while (q->used + size > q->limit && timeout > 0) {
-		q->quota_exceeded_cb(q);
-		if (fiber_cond_wait_deadline(&q->cond, deadline) != 0)
+
+	q->used += size;
+	while (q->used > q->limit) {
+		vy_quota_check_watermark(q);
+		q->used -= size;
+		int rc = fiber_cond_wait_deadline(&q->cond, deadline);
+		q->used += size;
+		if (rc != 0)
 			break; /* timed out */
 	}
 	double wait_time = ev_monotonic_now(loop()) - start_time;
@@ -221,12 +236,17 @@ vy_quota_try_use(struct vy_quota *q, size_t size, double timeout)
 		say_warn("waited for %zu bytes of vinyl memory quota "
 			 "for too long: %.3f sec", size, wait_time);
 	}
-	if (q->used + size > q->limit)
+	if (q->used > q->limit) {
+		/*
+		 * In case of faiure diag should have been set by
+		 * fiber_cond_wait_deadline().
+		 */
+		assert(!diag_is_empty(diag_get()));
+		q->used -= size;
 		return -1;
-	q->used += size;
+	}
 	q->use_curr += size;
-	if (q->used >= q->watermark)
-		q->quota_exceeded_cb(q);
+	vy_quota_check_watermark(q);
 
 	/* Wake up the next fiber in the line waiting for quota. */
 	vy_quota_signal(q);

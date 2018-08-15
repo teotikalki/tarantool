@@ -2366,7 +2366,7 @@ vinyl_engine_rollback_statement(struct engine *engine, struct txn *txn,
 
 /** {{{ Environment */
 
-static void
+static bool
 vy_env_quota_exceeded_cb(struct vy_quota *quota)
 {
 	struct vy_env *env = container_of(quota, struct vy_env, quota);
@@ -2393,9 +2393,10 @@ vy_env_quota_exceeded_cb(struct vy_quota *quota)
 		 * quota has been consumed by pending transactions.
 		 * There's nothing we can do about that.
 		 */
-		return;
+		return false;
 	}
 	vy_scheduler_trigger_dump(&env->scheduler);
+	return true;
 }
 
 static void

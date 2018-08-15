@@ -31,6 +31,7 @@
  * SUCH DAMAGE.
  */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <tarantool_ev.h>
 #include "fiber_cond.h"
@@ -42,7 +43,7 @@ extern "C" {
 struct vy_quota;
 struct histogram;
 
-typedef void
+typedef bool
 (*vy_quota_exceeded_f)(struct vy_quota *quota);
 
 /**
@@ -75,9 +76,16 @@ struct vy_quota {
 	struct fiber_cond cond;
 	/**
 	 * Called when quota is consumed if used >= watermark.
-	 * It is supposed to trigger memory reclaim.
+	 * It is supposed to trigger memory dump and return true
+	 * on success, false on failure.
 	 */
 	vy_quota_exceeded_f quota_exceeded_cb;
+	/**
+	 * Set if the last triggered memory dump hasn't completed
+	 * yet, i.e. quota_exceeded_cb() was invoked and returned
+	 * true, but vy_quota_dump() hasn't been called yet.
+	 */
+	bool dump_in_progress;
 	/** Timer for updating quota watermark. */
 	ev_timer timer;
 	/**
