@@ -634,6 +634,11 @@ box_set_replication(void)
 	box_sync_replication(true);
 	/* Follow replica */
 	replicaset_follow();
+	/* Sync replica up to quorum */
+	if (!replicaset_sync()) {
+		tnt_raise(ClientError, ER_CFG, "replication",
+			  "failed to connect to one or more replicas");
+	}
 }
 
 void
@@ -1948,7 +1953,8 @@ box_cfg_xc(void)
 	is_box_configured = true;
 
 	if (!is_bootstrap_leader)
-		replicaset_sync();
+		if (!replicaset_sync())
+			say_crit("entering orphan mode");
 
 	say_info("ready to accept requests");
 }

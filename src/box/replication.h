@@ -373,10 +373,10 @@ replicaset_follow(void);
 
 /**
  * Wait until a replication quorum is formed.
- * Return immediately if a quorum cannot be
- * formed because of errors.
+ * @return true in case of success.
+ * @return false if a quorum cannot be formed because of errors.
  */
-void
+bool
 replicaset_sync(void);
 
 /**

@@ -661,13 +661,13 @@ replicaset_follow(void)
 	}
 }
 
-void
+bool
 replicaset_sync(void)
 {
 	int quorum = replicaset_quorum();
 
 	if (quorum == 0)
-		return;
+		return true;
 
 	say_verbose("synchronizing with %d replicas", quorum);
 
@@ -686,12 +686,12 @@ replicaset_sync(void)
 		 * Do not stall configuration, leave the instance
 		 * in 'orphan' state.
 		 */
-		say_crit("entering orphan mode");
-		return;
+		return false;
 	}
 
 	say_crit("replica set sync complete, quorum of %d "
 		 "replicas formed", quorum);
+	return true;
 }
 
 void
