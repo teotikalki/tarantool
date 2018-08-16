@@ -54,7 +54,6 @@
 #include "box/schema.h"
 #include "box/tuple_format.h"
 #include "box/coll_id_cache.h"
-#include "fiber.h"
 
 static struct saved_records
 {
@@ -66,19 +65,20 @@ static struct saved_records
 	int flag_nchange;
 } *saved_records = NULL;
 
-int
+void
 save_record(Parse *parser, int space_id, int record_id, int record_key,
 	    int flag_nchange, char *name)
 {
 	/* Why it doesn't work with region? */
-	struct saved_records *tmp = region_alloc(&parser->region, sizeof(*tmp));
-	// struct saved_records *tmp = malloc(sizeof(*tmp));
+	// struct saved_records *tmp = region_alloc(&parser->region, sizeof(*tmp));
+	/* Free isn't implemented for this malloc for now. */
+	struct saved_records *tmp = malloc(sizeof(*tmp));
 	if (tmp == NULL) {
 		diag_set(OutOfMemory, sizeof(*tmp), "region_alloc",
 			 "saved_records");
 		parser->rc = SQL_TARANTOOL_ERROR;
 		parser->nErr++;
-		return -1;
+		return;
 	}
 	tmp->prev = saved_records;
 	tmp->name = name;
@@ -89,7 +89,6 @@ save_record(Parse *parser, int space_id, int record_id, int record_key,
 	if (name != NULL)
 		tmp->flag_nchange |= OPFLAG_CLEAR_HASH;
 	saved_records = tmp;
-	return 0;
 }
 
 void

@@ -602,6 +602,7 @@ int sqlite3VdbeExec(Vdbe *p)
 	struct session *user_session = current_session();
 	/* Opcode to where we should jump on error. */
 	int op_clean_on_error = p->nOp - 1;
+	/* On error rc is saved here before clean-up */
 	int saved_rc = 0;
 	/*** INSERT STACK UNION HERE ***/
 
@@ -659,7 +660,7 @@ int sqlite3VdbeExec(Vdbe *p)
 		/* Errors are detected by individual opcodes, with an immediate
 		 * jumps to abort_due_to_error.
 		 */
-		// assert(rc==SQLITE_OK);
+		assert(rc==SQLITE_OK || saved_rc != 0);
 
 		assert(pOp>=aOp && pOp<&aOp[p->nOp]);
 #ifdef VDBE_PROFILE
@@ -4353,9 +4354,11 @@ case OP_SInsert: {
  * This opcode is used only during DDL routine.
  * Delete entry with given key from system space.
  *
- * If P5 is set ot OPFLAG_DESTRUCTOR, removed record was created
- * in current query. Shouldn't change rc in this case.
- * If P5 is set to OPFLAG_NCHANGE, account overall changes
+ * If P5 has flag OPFLAG_DESTRUCTOR set, than removed record was
+ * created in current query.
+ * If P5 has flag OPFLAG_CLEAR_HASH set, than tblHash shoul be
+ * cleared of this table..
+ * If P5 has flag OPFLAG_NCHANGE set, than account overall changes
  * made to database. It decreases in case OPFLAG_DESTRUCTOR is set
  * and increases in other case.
  */
@@ -4367,15 +4370,14 @@ case OP_SDelete: {
 	struct space *space = space_by_id(pOp->p1);
 	assert(space != NULL);
 	assert(space_is_system(space));
-	int tmp_rc = sql_delete_by_key(space, pIn2->z, pIn2->n);
+	rc = sql_delete_by_key(space, pIn2->z, pIn2->n);
 	if ((pOp->p5 & OPFLAG_DESTRUCTOR) == 0) {
-		rc = tmp_rc;
 		if (rc)
-			goto abort_due_to_error;
+			goto jump_to_destructors;
 		if (pOp->p5 & OPFLAG_NCHANGE)
 			p->nChange++;
 	} else {
-		if (tmp_rc)
+		if (rc)
 			goto abort_due_to_error;
 		/* If string given than this is name of table. */
 		if ((pOp->p5 & OPFLAG_CLEAR_HASH) != 0)
