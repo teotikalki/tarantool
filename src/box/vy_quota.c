@@ -86,8 +86,15 @@ vy_quota_signal(struct vy_quota *q)
 static inline void
 vy_quota_check_watermark(struct vy_quota *q)
 {
-	if (!q->dump_in_progress && q->used >= q->watermark)
-		q->dump_in_progress = q->quota_exceeded_cb(q);
+	if (!q->dump_in_progress &&
+	    q->used >= q->watermark && q->quota_exceeded_cb(q)) {
+		q->dump_in_progress = true;
+		say_info("dumping %zu bytes, expected rate %.1f MB/s, "
+			 "ETA %.1f s, recent write rate %.1f MB/s", q->used,
+			 (double)q->dump_bw / 1024 / 1024,
+			 (double)q->used / (q->dump_bw + 1),
+			 (double)q->use_rate / 1024 / 1024);
+	}
 }
 
 static void
@@ -214,6 +221,9 @@ vy_quota_dump(struct vy_quota *q, size_t size, double duration)
 		q->dump_bw = histogram_percentile_lower(q->dump_bw_hist,
 							VY_DUMP_BANDWIDTH_PCT);
 	}
+
+	say_info("dumped %zu bytes in %.1f s, rate %.1f MB/s",
+		 size, duration, size / duration / 1024 / 1024);
 }
 
 int

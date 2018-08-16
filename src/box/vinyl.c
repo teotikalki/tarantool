@@ -2414,8 +2414,6 @@ vy_env_dump_complete_cb(struct vy_scheduler *scheduler,
 	assert(mem_used_after <= mem_used_before);
 	size_t mem_dumped = mem_used_before - mem_used_after;
 	vy_quota_dump(quota, mem_dumped, dump_duration);
-
-	say_info("dumped %zu bytes in %.1f sec", mem_dumped, dump_duration);
 }
 
 static struct vy_squash_queue *
