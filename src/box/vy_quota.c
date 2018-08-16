@@ -171,6 +171,13 @@ vy_quota_set_limit(struct vy_quota *q, size_t limit)
 }
 
 void
+vy_quota_reset_dump_bw(struct vy_quota *q, size_t max)
+{
+	histogram_reset(q->dump_bw_hist);
+	q->dump_bw = MIN(VY_DEFAULT_DUMP_BANDWIDTH, max);
+}
+
+void
 vy_quota_force_use(struct vy_quota *q, size_t size)
 {
 	q->used += size;

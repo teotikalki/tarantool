@@ -121,6 +121,13 @@ void
 vy_quota_set_limit(struct vy_quota *q, size_t limit);
 
 /**
+ * Reset dump bandwidth histogram and update initial estimate.
+ * Called when box.cfg.snap_io_rate_limit is updated.
+ */
+void
+vy_quota_reset_dump_bw(struct vy_quota *q, size_t max);
+
+/**
  * Consume @size bytes of memory. In contrast to vy_quota_try_use()
  * this function does not throttle the caller.
  */
