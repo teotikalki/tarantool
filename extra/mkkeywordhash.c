@@ -193,7 +193,6 @@ static Keyword aKeywordTable[] = {
   { "RECURSIVE",              "TK_RECURSIVE",   CTE,              true  },
   { "REFERENCES",             "TK_REFERENCES",  FKEY,             true  },
   { "REGEXP",                 "TK_LIKE_KW",     ALWAYS,           false },
-  { "REINDEX",                "TK_REINDEX",     REINDEX,          true  },
   { "RELEASE",                "TK_RELEASE",     ALWAYS,           true  },
   { "RENAME",                 "TK_RENAME",      ALTER,            true  },
   { "REPLACE",                "TK_REPLACE",     CONFLICT,         true  },
