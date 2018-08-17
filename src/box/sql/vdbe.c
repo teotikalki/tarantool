@@ -1157,6 +1157,10 @@ case OP_NextAutoincValue: {
 	assert(pOp->p1 > 0);
 	assert(pOp->p2 > 0);
 
+	pIn2 = &p->aMem[pOp->p2];
+	if ((pIn2->flags & MEM_Null) == 0)
+		break;
+
 	struct space *space = space_by_id(pOp->p1);
 	if (space == NULL) {
 		rc = SQL_TARANTOOL_ERROR;
@@ -3755,7 +3759,7 @@ case OP_FCopy: {     /* out2 */
 
 	if ((pOp->p3 & OPFLAG_NOOP_IF_NULL) && (pIn1->flags & MEM_Null)) {
 		pOut = &aMem[pOp->p2];
-		if (pOut->flags & MEM_Undefined) pOut->flags = MEM_Null;
+		pOut->flags = MEM_Null;
 		/* Flag is set and register is NULL -> do nothing  */
 	} else {
 		assert(memIsValid(pIn1));
