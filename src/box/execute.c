@@ -555,20 +555,30 @@ sql_execute(sqlite3 *db, struct sqlite3_stmt *stmt, struct port *port,
 	    struct region *region)
 {
 	int rc, column_count = sqlite3_column_count(stmt);
-	if (column_count > 0) {
-		/* Either ROW or DONE or ERROR. */
-		while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-			if (sql_row_to_port(stmt, column_count, region,
-					    port) != 0)
-				return -1;
+	if (sql_result_require_flush(stmt)) {
+		/* Either ROW or TUPLE or DONE or ERROR. */
+		while (true) {
+			rc = sqlite3_step(stmt);
+			if (rc == SQLITE_ROW) {
+				if (sql_row_to_port(stmt, column_count, region,
+						    port) != 0)
+					return -1;
+			} else if (rc == SQL_TUPLE) {
+				struct tuple *tuple =
+					sqlite3_result_tuple(stmt);
+				if (tuple != NULL &&
+					port_tuple_add(port, tuple) != 0)
+					return -1;
+			} else {
+				break;
+			}
 		}
 		assert(rc == SQLITE_DONE || rc != SQLITE_OK);
 	} else {
-		/* No rows. Either DONE or ERROR. */
-		rc = sqlite3_step(stmt);
+		while ((rc = sqlite3_step(stmt)) == SQL_TUPLE);
 		assert(rc != SQLITE_ROW && rc != SQLITE_OK);
 	}
-	if (rc != SQLITE_DONE) {
+	if (rc != SQLITE_DONE && rc != SQL_TUPLE) {
 		diag_set(ClientError, ER_SQL_EXECUTE, sqlite3_errmsg(db));
 		return -1;
 	}
@@ -615,14 +625,15 @@ sql_response_dump(struct sql_response *response, struct obuf *out)
 	struct sqlite3_stmt *stmt = (struct sqlite3_stmt *) response->prep_stmt;
 	struct port_tuple *port_tuple = (struct port_tuple *) &response->port;
 	int keys, rc = 0, column_count = sqlite3_column_count(stmt);
-	if (column_count > 0) {
-		if (sql_get_description(stmt, out, column_count) != 0) {
+	if (sql_result_require_flush(stmt)) {
+		if (column_count > 0 &&
+		    sql_get_description(stmt, out, column_count) != 0) {
 err:
 			obuf_rollback_to_svp(out, &header_svp);
 			rc = -1;
 			goto finish;
 		}
-		keys = 2;
+		keys = 1 + (column_count > 0);
 		if (iproto_reply_array_key(out, port_tuple->size,
 					   IPROTO_DATA) != 0)
 			goto err;

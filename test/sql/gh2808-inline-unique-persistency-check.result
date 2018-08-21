@@ -11,6 +11,9 @@ engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 ---
 ...
+box.sql.execute('pragma interactive_mode=0;')
+---
+...
 -- Create a table and insert a datum
 box.sql.execute([[CREATE TABLE t1(a PRIMARY KEY, b, UNIQUE(b));]])
 ---
@@ -29,6 +32,7 @@ test_run:cmd('restart server default');
 -- correctly after restart (#2808)
 box.sql.execute([[INSERT INTO t1 VALUES(2,3);]])
 ---
+- - [2, 3]
 ...
 -- Sanity check
 box.sql.execute([[SELECT * FROM t1]])

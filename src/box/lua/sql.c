@@ -6,6 +6,7 @@
 #include "box/info.h"
 #include "lua/utils.h"
 #include "info.h"
+#include "tuple.h"
 
 static void
 lua_push_column_names(struct lua_State *L, struct sqlite3_stmt *stmt)
@@ -83,8 +84,8 @@ lua_sql_execute(struct lua_State *L)
 
 	int rc;
 	int retval_count;
-	if (sqlite3_column_count(stmt) == 0) {
-		while ((rc = sqlite3_step(stmt)) == SQLITE_ROW);
+	if (!sql_result_require_flush(stmt)) {
+		while ((rc = sqlite3_step(stmt)) == SQL_TUPLE);
 		retval_count = 0;
 	} else {
 		lua_newtable(L);
@@ -94,9 +95,19 @@ lua_sql_execute(struct lua_State *L)
 		lua_rawseti(L, -2, 0);
 
 		int row_count = 0;
-		while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-			lua_push_row(L, stmt);
-			lua_rawseti(L, -2, ++row_count);
+		while (true) {
+			rc = sqlite3_step(stmt);
+			if (rc == SQLITE_ROW) {
+				lua_push_row(L, stmt);
+				lua_rawseti(L, -2, ++row_count);
+			} else if (rc == SQL_TUPLE) {
+				struct tuple *tuple =
+					sqlite3_result_tuple(stmt);
+				luaT_pushtupleornil(L, tuple);
+				lua_rawseti(L, -2, ++row_count);
+			} else {
+				break;
+			}
 		}
 		retval_count = 1;
 	}

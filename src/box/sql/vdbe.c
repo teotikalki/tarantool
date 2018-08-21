@@ -42,6 +42,7 @@
 #include "box/box.h"
 #include "box/fkey.h"
 #include "box/txn.h"
+#include "box/tuple.h"
 #include "box/session.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
@@ -1361,6 +1362,25 @@ case OP_IntCopy: {            /* out2 */
 	assert((pIn1->flags & MEM_Int)!=0);
 	pOut = &aMem[pOp->p2];
 	sqlite3VdbeMemSetInt64(pOut, pIn1->u.i);
+	break;
+}
+
+/* Opcode: ResultTuple P1 * * * *
+ * Synopsis: output=tuple(cursor(P1))
+ *
+ * The register P1 is a cursor, from which a last tuple is
+ * returned. Sqlite3_step returns SQL_TUPLE.
+ */
+case OP_ResultTuple: {
+	VdbeCursor *cursor = p->apCsr[pOp->p1];
+	assert(cursor != NULL);
+	assert(cursor->eCurType == CURTYPE_TARANTOOL);
+	if (cursor->uc.pCursor->last_tuple != NULL) {
+		p->result_tuple = cursor->uc.pCursor->last_tuple;
+		p->pc = (int)(pOp - aOp) + 1;
+		rc = SQL_TUPLE;
+		goto vdbe_return;
+	}
 	break;
 }
 
@@ -4262,16 +4282,26 @@ case OP_IdxInsert: {        /* in2 */
 	} else {
 		BtCursor *pBtCur = pC->uc.pCursor;
 		if (pBtCur->curFlags & BTCF_TaCursor) {
+			if (pBtCur->last_tuple != NULL)
+				box_tuple_unref(pBtCur->last_tuple);
+			pBtCur->last_tuple = NULL;
+			struct tuple *result = NULL;
 			/* Make sure that memory has been allocated on region. */
 			assert(aMem[pOp->p2].flags & MEM_Ephem);
 			if (pOp->opcode == OP_IdxInsert)
 				rc = tarantoolSqlite3Insert(pBtCur->space,
 							    pIn2->z,
-							    pIn2->z + pIn2->n);
+							    pIn2->z + pIn2->n,
+							    &result);
 			else
 				rc = tarantoolSqlite3Replace(pBtCur->space,
 							     pIn2->z,
-							     pIn2->z + pIn2->n);
+							     pIn2->z + pIn2->n,
+							     &result);
+			if (rc == SQLITE_OK) {
+				pBtCur->last_tuple = result;
+				tuple_ref(result);
+			}
 		} else if (pBtCur->curFlags & BTCF_TEphemCursor) {
 			rc = tarantoolSqlite3EphemeralInsert(pBtCur->space,
 							     pIn2->z,
@@ -4319,7 +4349,7 @@ case OP_SInsert: {
 	struct space *space = space_by_id(pOp->p1);
 	assert(space != NULL);
 	assert(space_is_system(space));
-	rc = tarantoolSqlite3Insert(space, pIn2->z, pIn2->z + pIn2->n);
+	rc = tarantoolSqlite3Insert(space, pIn2->z, pIn2->z + pIn2->n, NULL);
 	if (rc)
 		goto abort_due_to_error;
 	if (pOp->p5 & OPFLAG_NCHANGE)

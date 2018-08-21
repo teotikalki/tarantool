@@ -38,6 +38,7 @@
 #include "box/session.h"
 #include "box/schema.h"
 #include "bit/bit.h"
+#include "vdbeInt.h"
 
 /*
  * Generate code that will open pTab as cursor iCur.
@@ -837,7 +838,7 @@ sqlite3Insert(Parse * pParse,	/* Parser context */
 						true, &on_conflict,
 						endOfLoop, &isReplace, 0);
 		fkey_emit_check(pParse, pTab, 0, regIns, 0);
-		vdbe_emit_insertion_completion(v, iIdxCur, aRegIdx[0],
+		vdbe_emit_insertion_completion(pParse, iIdxCur, aRegIdx[0],
 					       &on_conflict);
 	}
 
@@ -1453,9 +1454,10 @@ sqlite3GenerateConstraintChecks(Parse * pParse,		/* The parser context */
 }
 
 void
-vdbe_emit_insertion_completion(Vdbe *v, int cursor_id, int tuple_id,
+vdbe_emit_insertion_completion(struct Parse *parser, int cursor_id, int tuple_id,
 			       struct on_conflict *on_conflict)
 {
+	struct Vdbe *v = parser->pVdbe;
 	assert(v != NULL);
 	int opcode;
 	enum on_conflict_action override_error = on_conflict->override_error;
@@ -1481,6 +1483,13 @@ vdbe_emit_insertion_completion(Vdbe *v, int cursor_id, int tuple_id,
 
 	sqlite3VdbeAddOp2(v, opcode, cursor_id, tuple_id);
 	sqlite3VdbeChangeP5(v, pik_flags);
+
+	struct session *user_session = current_session();
+	if (user_session->sql_flags & SQL_InteractiveMode &&
+	    parser->pToplevel == NULL) {
+		sqlite3VdbeAddOp1(v, OP_ResultTuple, cursor_id);
+		v->is_flush_required = true;
+	}
 }
 
 /*

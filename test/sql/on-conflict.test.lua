@@ -1,6 +1,7 @@
 test_run = require('test_run').new()
 engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
+box.sql.execute('pragma interactive_mode=0;')
 
 -- Create space
 box.sql.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER UNIQUE ON CONFLICT ABORT)")

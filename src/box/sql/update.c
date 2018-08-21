@@ -573,7 +573,7 @@ sqlite3Update(Parse * pParse,		/* The parser context */
 			fkey_emit_check(pParse, pTab, 0, regNewPk, aXRef);
 
 		/* Insert the new index entries and the new record. */
-		vdbe_emit_insertion_completion(v, iIdxCur, aRegIdx[0],
+		vdbe_emit_insertion_completion(pParse, iIdxCur, aRegIdx[0],
 					       &on_conflict);
 
 		/* Do any ON CASCADE, SET NULL or SET DEFAULT operations required to

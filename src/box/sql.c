@@ -65,7 +65,8 @@ static const uint32_t default_sql_flags = SQLITE_ShortColNames
 					  | SQLITE_EnableTrigger
 					  | SQLITE_AutoIndex
 					  | SQLITE_RecTriggers
-					  | SQLITE_ForeignKeys;
+					  | SQLITE_ForeignKeys
+					  | SQL_InteractiveMode;
 
 void
 sql_init()
@@ -469,7 +470,7 @@ int tarantoolSqlite3EphemeralDrop(BtCursor *pCur)
 
 static inline int
 insertOrReplace(struct space *space, const char *tuple, const char *tuple_end,
-		enum iproto_type type)
+		enum iproto_type type, struct tuple **result)
 {
 	assert(space != NULL);
 	struct request request;
@@ -479,20 +480,20 @@ insertOrReplace(struct space *space, const char *tuple, const char *tuple_end,
 	request.space_id = space->def->id;
 	request.type = type;
 	mp_tuple_assert(request.tuple, request.tuple_end);
-	int rc = box_process_rw(&request, space, NULL);
+	int rc = box_process_rw(&request, space, result);
 	return rc == 0 ? SQLITE_OK : SQL_TARANTOOL_INSERT_FAIL;
 }
 
 int tarantoolSqlite3Insert(struct space *space, const char *tuple,
-			   const char *tuple_end)
+			   const char *tuple_end, struct tuple **result)
 {
-	return insertOrReplace(space, tuple, tuple_end, IPROTO_INSERT);
+	return insertOrReplace(space, tuple, tuple_end, IPROTO_INSERT, result);
 }
 
 int tarantoolSqlite3Replace(struct space *space, const char *tuple,
-			    const char *tuple_end)
+			    const char *tuple_end, struct tuple **result)
 {
-	return insertOrReplace(space, tuple, tuple_end, IPROTO_REPLACE);
+	return insertOrReplace(space, tuple, tuple_end, IPROTO_REPLACE, result);
 }
 
 /*

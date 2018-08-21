@@ -1525,7 +1525,7 @@ emitNewSysSpaceSequenceRecord(Parse *pParse, int space_id, const char reg_seq_id
 
 	/* 1. Space id  */
 	sqlite3VdbeAddOp2(v, OP_SCopy, space_id, first_col + 1);
-	
+
 	/* 2. Sequence id  */
 	sqlite3VdbeAddOp2(v, OP_IntCopy, reg_seq_id, first_col + 2);
 
@@ -2013,7 +2013,9 @@ vdbe_emit_stat_space_clear(struct Parse *parse, const char *stat_table_name,
 	 * On memory allocation error sql_table delete_from
 	 * releases memory for its own.
 	 */
+	bft is_interactive = parse->pVdbe->is_flush_required;
 	sql_table_delete_from(parse, src_list, where);
+	parse->pVdbe->is_flush_required = is_interactive;
 }
 
 /**

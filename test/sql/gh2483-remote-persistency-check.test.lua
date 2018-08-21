@@ -3,6 +3,7 @@ env = require('test_run')
 test_run = env.new()
 engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
+box.sql.execute('pragma interactive_mode=0;')
 
 box.schema.user.grant('guest', 'read,write,execute', 'universe')
 

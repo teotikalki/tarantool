@@ -10,6 +10,9 @@ engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 ---
 ...
+box.sql.execute('pragma interactive_mode=0;')
+---
+...
 errinj = box.error.injection
 ---
 ...
@@ -73,7 +76,8 @@ while f1:status() ~= 'dead' do fiber.sleep(0) end
 ...
 insert_res
 ---
-- rowcount: 1
+- rows:
+  - [100, 1, '1']
 ...
 select_res
 ---

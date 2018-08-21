@@ -8,6 +8,9 @@ engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 ---
 ...
+box.sql.execute('pragma interactive_mode=0;')
+---
+...
 -- box.cfg()
 box.sql.execute("CREATE TABLE t1(a integer primary key, b UNIQUE, e);")
 ---

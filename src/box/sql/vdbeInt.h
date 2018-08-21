@@ -376,7 +376,17 @@ struct Vdbe {
 	Mem *aMem;		/* The memory locations */
 	Mem **apArg;		/* Arguments to currently executing user function */
 	Mem *aColName;		/* Column names to return */
-	Mem *pResultSet;	/* Pointer to an array of results */
+	union {
+		/**
+		 * Pointer to an array of results for SQLITE_ROW.
+		 */
+		struct Mem *pResultSet;
+		/**
+		 * Result tuple, returned by an iterator for
+		 * SQL_TUPLE.
+		 */
+		struct tuple *result_tuple;
+	};
 	char *zErrMsg;		/* Error message written here */
 	VdbeCursor **apCsr;	/* One element of this array for each open cursor */
 	Mem *aVar;		/* Values for the OP_Variable opcode. */
@@ -393,6 +403,11 @@ struct Vdbe {
 	bft changeCntOn:1;	/* True to update the change-counter */
 	bft runOnlyOnce:1;	/* Automatically expire on reset */
 	bft isPrepareV2:1;	/* True if prepared with prepare_v2() */
+	/**
+	 * Compiled SQL have OP_ResultTuple instructions that
+	 * export tuples to be displayed in console.
+	 */
+	bft is_flush_required:1;
 	u32 aCounter[5];	/* Counters used by sqlite3_stmt_status() */
 	char *zSql;		/* Text of the SQL statement that generated this */
 	void *pFree;		/* Free this when deleting the vdbe */

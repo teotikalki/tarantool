@@ -433,6 +433,7 @@ box.cfg{
 
 local engine = test_run and test_run:get_cfg('engine') or 'memtx'
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
+box.sql.execute('pragma interactive_mode=0;')
 
 function test.engine(self)
     return engine

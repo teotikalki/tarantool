@@ -176,6 +176,11 @@ static const PragmaName aPragmaName[] = {
 	 /* ColNames:  */ 13, 6,
 	 /* iArg:      */ 1},
 #endif
+	{ /* zName:     */ "interactive_mode",
+	  /* ePragTyp:  */ PragTyp_FLAG,
+	  /* ePragFlg:  */ PragFlg_Result0 | PragFlg_NoColumns1,
+	  /* ColNames:  */ 0, 0,
+	  /* iArg:      */ SQL_InteractiveMode},
 #if defined(SQLITE_DEBUG) && !defined(SQLITE_OMIT_PARSER_TRACE)
 	{ /* zName:     */ "parser_trace",
 	 /* ePragTyp:  */ PragTyp_PARSER_TRACE,

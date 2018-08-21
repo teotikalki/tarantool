@@ -22,6 +22,9 @@ test_run:switch('upgrade')
 ---
 - true
 ...
+box.sql.execute('pragma interactive_mode=0;')
+---
+...
 -- test system tables
 box.space._space.index['name']:get('_trigger')
 ---

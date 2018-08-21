@@ -10,6 +10,9 @@ engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 ---
 ...
+box.sql.execute('pragma interactive_mode=0;')
+---
+...
 box.sql.execute('create table test (id primary key, a float, b text)')
 ---
 ...
@@ -69,19 +72,27 @@ type(ret.rows[1])
 -- Operation with rowcount result.
 cn:execute('insert into test values (10, 11, NULL)')
 ---
-- rowcount: 1
+- rows:
+  - [10, 11, null]
 ...
 cn:execute('delete from test where a = 5')
 ---
-- rowcount: 1
+- rows:
+  - [4, 5, '6']
 ...
 cn:execute('insert into test values (11, 12, NULL), (12, 12, NULL), (13, 12, NULL)')
 ---
-- rowcount: 3
+- rows:
+  - [11, 12, null]
+  - [12, 12, null]
+  - [13, 12, null]
 ...
 cn:execute('delete from test where a = 12')
 ---
-- rowcount: 3
+- rows:
+  - [11, 12, null]
+  - [12, 12, null]
+  - [13, 12, null]
 ...
 -- SQL errors.
 cn:execute('insert into not_existing_table values ("kek")')
@@ -338,7 +349,8 @@ box.space.TEST2.name
 ...
 cn:execute('insert into test2 values (1, 1, 1, 1)')
 ---
-- rowcount: 1
+- rows:
+  - [1, 1, 1, 1]
 ...
 cn:execute('select * from test2')
 ---
@@ -376,7 +388,10 @@ cn:execute('create table test3(id primary key, a, b)')
 -- for _space and for _index.
 cn:execute('insert into test3 values (1, 1, 1), (2, 2, 2), (3, 3, 3)')
 ---
-- rowcount: 3
+- rows:
+  - [1, 1, 1]
+  - [2, 2, 2]
+  - [3, 3, 3]
 ...
 cn:execute('create table if not exists test3(id primary key)')
 ---
@@ -455,7 +470,10 @@ cn:execute('create trigger trig INSERT ON test3 BEGIN SELECT * FROM test3; END;'
 ...
 cn:execute('insert into test3 values (1, 1, 1), (2, 2, 2), (3, 3, 3)')
 ---
-- rowcount: 3
+- rows:
+  - [1, 1, 1]
+  - [2, 2, 2]
+  - [3, 3, 3]
 ...
 cn:execute('drop table test3')
 ---
@@ -548,7 +566,8 @@ future3 = cn:execute('insert into test values (2, 2, 2), (3, 3, 3)', nil, nil, {
 ...
 future1:wait_result()
 ---
-- rowcount: 1
+- rows:
+  - [1, 1, 1]
 ...
 future2:wait_result()
 ---
@@ -558,7 +577,9 @@ future2:wait_result()
 ...
 future3:wait_result()
 ---
-- rowcount: 2
+- rows:
+  - [2, 2, 2]
+  - [3, 3, 3]
 ...
 future4 = cn:execute('select * from test', nil, nil, {is_async = true})
 ---

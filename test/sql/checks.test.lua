@@ -3,6 +3,7 @@ test_run = env.new()
 test_run:cmd("push filter ".."'\\.lua.*:[0-9]+: ' to '.lua...\"]:<line>: '")
 engine = test_run:get_cfg('engine')
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
+box.sql.execute('pragma interactive_mode=0;')
 
 --
 -- gh-3272: Move SQL CHECK into server

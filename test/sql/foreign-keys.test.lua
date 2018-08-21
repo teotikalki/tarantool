@@ -1,6 +1,7 @@
 env = require('test_run')
 test_run = env.new()
 test_run:cmd('restart server default with cleanup=1')
+box.sql.execute("pragma interactive_mode=0")
 
 
 -- Check that tuple inserted into _fk_constraint is FK constrains

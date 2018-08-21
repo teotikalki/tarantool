@@ -414,6 +414,8 @@ enum sql_ret_code {
 	SQLITE_ROW,
 	/** sqlite3_step() has finished executing. */
 	SQLITE_DONE,
+	/** sqlite3_step() has a tuple to be returned. */
+	SQL_TUPLE,
 };
 
 void *
@@ -565,8 +567,30 @@ sqlite3_prepare_v2(sqlite3 * db,	/* Database handle */
 		   const char **pzTail	/* OUT: Pointer to unused portion of zSql */
 	);
 
+/**
+ * Get last step tuple prepared with OP_ResultTupe.
+ * Valid when SQL_TUPLE returned with sqlite3_step.
+ *
+ * @param stmt Virtual database engine program.
+ * @retval tuple pointer.
+ */
+struct tuple *
+sqlite3_result_tuple(sqlite3_stmt *stmt);
+
+/**
+* Execute one step of VDBE execution.
+* @param stmt Virtual database engine program.
+*
+* @retval SQLITE_ROW On of rows of DQL request, or meta of DML -
+*         'rows deleted', 'rows inserted' and etc. Result can be
+*         accessed by columns using sqlite3_column_...().
+* @retval SQL_TUPLE Inserted or updated tuple on DML.
+* @retval SQLITE_ERROR Vdbe is terminated by an error.
+* @retval SQLITE_DONE Vdbe successfully finished execution, and
+*         can be finalized.
+*/
 int
-sqlite3_step(sqlite3_stmt *);
+sqlite3_step(sqlite3_stmt *stmt);
 
 const void *
 sqlite3_column_blob(sqlite3_stmt *, int iCol);
@@ -709,6 +733,15 @@ sqlite3_aggregate_context(sqlite3_context *,
 
 int
 sqlite3_column_count(sqlite3_stmt * pStmt);
+
+/**
+ * Test, if compiled @stmt has data to be displayed to
+ * user.
+ * @param stmt Virtual database engine program.
+ * @retval true If have any, false otherwise.
+ */
+bool
+sql_result_require_flush(struct sqlite3_stmt *stmt);
 
 const char *
 sqlite3_column_name(sqlite3_stmt *, int N);
@@ -1609,6 +1642,8 @@ struct sqlite3 {
 #define SQLITE_VdbeAddopTrace 0x00001000	/* Trace sqlite3VdbeAddOp() calls */
 #define SQLITE_IgnoreChecks   0x00002000	/* Do not enforce check constraints */
 #define SQLITE_ReadUncommitted 0x0004000	/* For shared-cache mode */
+/* Return operations results in SQL. */
+#define SQL_InteractiveMode   0x40000000
 #define SQLITE_ReverseOrder   0x00020000	/* Reverse unordered SELECTs */
 #define SQLITE_RecTriggers    0x00040000	/* Enable recursive triggers */
 #define SQLITE_ForeignKeys    0x00080000	/* Enforce foreign key constraints  */
@@ -3907,7 +3942,7 @@ void sqlite3GenerateConstraintChecks(Parse *, Table *, int *, int, int, int,
  * This routine generates code to finish the INSERT or UPDATE
  * operation that was started by a prior call to
  * sqlite3GenerateConstraintChecks.
- * @param v Virtual database engine.
+ * @param parser SQL parser.
  * @param cursor_id Primary index cursor.
  * @param tuple_id Register with data to insert.
  * @param on_conflict Structure, which contains override error
@@ -3915,8 +3950,8 @@ void sqlite3GenerateConstraintChecks(Parse *, Table *, int *, int, int, int,
  * 	  action after generating bytecode for constraints checks.
  */
 void
-vdbe_emit_insertion_completion(Vdbe *v, int cursor_id, int tuple_id,
-			       struct on_conflict *on_conflict);
+vdbe_emit_insertion_completion(struct Parse *parser, int cursor_id,
+			       int tuple_id, struct on_conflict *on_conflict);
 
 int sqlite3OpenTableAndIndices(Parse *, Table *, int, u8, int, u8 *, int *,
 			       int *, u8, u8);

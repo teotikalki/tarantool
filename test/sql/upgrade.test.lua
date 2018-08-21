@@ -7,6 +7,7 @@ test_run:cmd('create server upgrade with script="sql/upgrade/upgrade.lua", workd
 test_run:cmd('start server upgrade')
 
 test_run:switch('upgrade')
+box.sql.execute('pragma interactive_mode=0;')
 
 -- test system tables
 box.space._space.index['name']:get('_trigger')

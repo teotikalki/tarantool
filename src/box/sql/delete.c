@@ -34,6 +34,7 @@
 #include "box/schema.h"
 #include "sqliteInt.h"
 #include "tarantoolInt.h"
+#include "vdbeInt.h"
 
 struct Table *
 sql_list_lookup_table(struct Parse *parse, SrcList *src_list)
@@ -550,6 +551,13 @@ sql_generate_row_delete(struct Parse *parse, struct Table *table,
 
 		if (idx_noseek >= 0)
 			sqlite3VdbeAddOp1(v, OP_Delete, idx_noseek);
+
+		struct session *user_session = current_session();
+		if (user_session->sql_flags & SQL_InteractiveMode &&
+		    parse->pToplevel == NULL) {
+			sqlite3VdbeAddOp1(v, OP_ResultTuple, cursor);
+			v->is_flush_required = true;
+		}
 
 		if (mode == ONEPASS_MULTI)
 			p5 |= OPFLAG_SAVEPOSITION;
