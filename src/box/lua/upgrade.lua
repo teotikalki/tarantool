@@ -396,7 +396,7 @@ local function create_collation_space()
     box.space._index:insert{_collation.id, 1, 'name', 'tree', {unique = true}, {{1, 'string'}}}
 
     log.info("create predefined collations")
-    box.space._collation:replace{1, "unicode", ADMIN, "ICU", "", setmap{}}
+    box.space._collation:replace{1, "unicode", ADMIN, "ICU", "", {strength='primary'}}
     box.space._collation:replace{2, "unicode_ci", ADMIN, "ICU", "", {strength='primary'}}
 
     local _priv = box.space[box.schema.PRIV_ID]

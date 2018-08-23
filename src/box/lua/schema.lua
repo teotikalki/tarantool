@@ -1988,10 +1988,13 @@ box.internal.collation.create = function(name, coll_type, locale, opts)
         box.error(box.error.ILLEGAL_PARAMS,
         "options (fourth arg) must be a table or nil")
     end
+    local opts_defaults = {
+        strength = "primary",
+    }
+    opts = update_param_table(opts, opts_defaults)
     local lua_opts = {if_not_exists = opts.if_not_exists }
     check_param_table(lua_opts, {if_not_exists = 'boolean'})
     opts.if_not_exists = nil
-    opts = setmap(opts)
 
     local _coll = box.space[box.schema.COLLATION_ID]
     if lua_opts.if_not_exists then
