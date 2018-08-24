@@ -41,21 +41,19 @@ local function locals(test, level)
     local variables = {}
     local idx = 1
     while true do
-      local name, value = debug.getlocal(level, idx)
-      if name ~= nil then
-          -- compare a table with a tuple raises an error, so we check types
-          -- first
-          local eq = type(value) == type(test) and value == test
-          -- temporary values start with '('
-          if not name:startswith('(') and not eq then
-              variables[name] = value
-          end
-      else
-          break
-      end
-      idx = 1 + idx
+        local name, value = debug.getlocal(level, idx)
+        if not name then
+            return variables
+        end
+        -- Compare a table with a tuple raises an error, so we
+        -- check types first.
+        local is_test = type(value) == type(test) and value == test
+        -- Temporary values start with '('.
+        if not name:startswith('(') and not is_test then
+            variables[name] = value
+        end
+        idx = idx + 1
     end
-    return variables
 end
 
 local function diag(test, fmt, ...)
