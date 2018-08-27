@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(90)
+test:plan(92)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -32,6 +32,8 @@ invalid('replication_sync_lag', 0)
 invalid('replication_connect_timeout', -1)
 invalid('replication_connect_timeout', 0)
 invalid('replication_connect_quorum', -1)
+invalid('replication_sync_lag', -1)
+invalid('replication_sync_lag', -1)
 invalid('wal_mode', 'invalid')
 invalid('rows_per_wal', -1)
 invalid('listen', '//!')

@@ -657,6 +657,12 @@ box_set_replication_connect_quorum(void)
 }
 
 void
+box_set_replication_sync_lag(void)
+{
+	replication_sync_lag = box_check_replication_sync_lag();
+}
+
+void
 box_bind(void)
 {
 	const char *uri = cfg_gets("listen");

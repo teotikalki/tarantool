@@ -211,6 +211,7 @@ local dynamic_cfg = {
                       'Can\'t change replicaset uuid')
         end
     end,
+    replication_sync_lag    = private.cfg_set_replication_sync_lag,
 }
 
 local dynamic_cfg_skip_at_load = {
