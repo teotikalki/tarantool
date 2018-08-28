@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(90)
+test:plan(91)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -445,6 +445,12 @@ test:is(run_script(code), PANIC, "instance_uuid mismatch")
 code = string.format(code_fmt, dir, instance_uuid, uuid.new())
 test:is(run_script(code), PANIC, "replicaset_uuid mismatch")
 fio.rmdir(dir)
+
+--
+--gh-3610: assertion failure when trying to connect to the same master more than once
+--
+status, reason = pcall(box.cfg, {listen = 3303, replication={3303,3303}})
+test:ok(not status and reason:match("Incorrect"), "Duplication of replication source")
 
 test:check()
 os.exit(0)

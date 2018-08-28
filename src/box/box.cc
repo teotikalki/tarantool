@@ -369,9 +369,23 @@ static void
 box_check_replication(void)
 {
 	int count = cfg_getarr_size("replication");
+	char *repl[count-1];
 	for (int i = 0; i < count; i++) {
 		const char *source = cfg_getarr_elem("replication", i);
 		box_check_uri(source, "replication");
+		repl[i] = strdup(source);
+		if (repl[i] == NULL) {
+			tnt_raise(OutOfMemory, sizeof(*source), "source", "malloc");
+		}
+		for (int j = i; j >= 1; j--) {
+			if (strcmp(repl[i], repl[j-1]) == 0) {
+				tnt_raise(ClientError, ER_CFG, "replication",
+					  "duplication of replication source");
+			}
+		}
+	}
+	for (int i = 0; i < count; i++) {
+		free(repl[i]);
 	}
 }
 
