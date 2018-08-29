@@ -1,6 +1,6 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(32)
+test:plan(38)
 
 --!./tcltestrunner.lua
 -- 2001 September 15
@@ -411,6 +411,72 @@ test:do_execsql_test(
         "two", 3, "one", 9
         -- </select5-8.8>
     })
+
+--
+-- gh-2364: Support HAVING without GROUP BY clause.
+--
+test:do_catchsql_test(
+    "select6-1.1",
+    [[
+        CREATE TABLE te40 (s1 INT, s2 INT, PRIMARY KEY (s1,s2));
+        INSERT INTO te40 VALUES (1,1);
+        INSERT INTO te40 VALUES (2,2);
+        SELECT s1 FROM te40 HAVING s1 = 1;
+    ]], {
+    -- <select6-1.1>
+    1, "SQL error: HAVING expression must appear in the GROUP BY clause or be used in an aggregate function"
+    -- <select6-1.1>
+})
+
+test:do_catchsql_test(
+    "select6-1.2",
+    [[
+        SELECT SUM(s1) FROM te40 HAVING s1 = 2;
+    ]], {
+    -- <select6-1.2>
+    1, "SQL error: HAVING expression must appear in the GROUP BY clause or be used in an aggregate function"
+    -- <select6-1.2>
+})
+
+test:do_catchsql_test(
+    "select6-1.3",
+    [[
+        SELECT s1 FROM te40 HAVING SUM(s1) = 2;
+    ]], {
+    -- <select6-1.3>
+    1, "SQL error: HAVING expression must appear in the GROUP BY clause or be used in an aggregate function"
+    -- <select6-1.3>
+})
+
+test:do_execsql_test(
+    "select6-1.4",
+    [[
+        SELECT SUM(s1) FROM te40 HAVING SUM(s1) > 0;
+    ]], {
+    -- <select6-1.4>
+    3
+    -- <select6-1.4>
+})
+
+test:do_execsql_test(
+    "select6-2.1",
+    [[
+        SELECT MIN(s1) FROM te40 HAVING SUM(s1) > 0;
+    ]], {
+    -- <select6-2.1>
+    1
+    -- <select6-2.1>
+})
+
+test:do_execsql_test(
+    "select6-3.1",
+    [[
+        SELECT SUM(s1) FROM te40 HAVING SUM(s1) < 0;
+    ]],
+    -- <select6-3.1>
+    {}
+    -- <select6-3.1>
+)
 
 test:finish_test()
 

@@ -1304,12 +1304,32 @@ resolveSelectStep(Walker * pWalker, Select * p)
 			sNC.ncFlags &= ~NC_AllowAgg;
 		}
 
-		/* If a HAVING clause is present, then there must be a GROUP BY clause.
+		/*
+		 * If a HAVING clause is present, then there must
+		 * be a GROUP BY clause or aggregate function
+		 * should be specified.
 		 */
-		if (p->pHaving && !pGroupBy) {
-			sqlite3ErrorMsg(pParse,
-					"a GROUP BY clause is required before HAVING");
-			return WRC_Abort;
+		if (p->pHaving != NULL && pGroupBy == NULL) {
+			struct NameContext having_nc;
+			memset(&having_nc, 0, sizeof(having_nc));
+			having_nc.pParse = pParse;
+			having_nc.ncFlags = NC_AllowAgg;
+			having_nc.pSrcList = p->pSrc;
+			if ((p->selFlags & SF_Aggregate) != 0 &&
+				sqlite3ResolveExprNames(&having_nc,
+							p->pHaving) != 0)
+				return WRC_Abort;
+			if ((having_nc.ncFlags & NC_HasAgg) == 0) {
+				const char *err_msg =
+					tt_sprintf("HAVING expression must "
+						   "appear in the GROUP BY "
+						   "clause or be used in an "
+						   "aggregate function");
+				diag_set(ClientError, ER_SQL, err_msg);
+				pParse->nErr++;
+				pParse->rc = SQL_TARANTOOL_ERROR;
+				return WRC_Abort;
+			}
 		}
 
 		/* Add the output column list to the name-context before parsing the
