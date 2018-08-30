@@ -215,7 +215,7 @@ sql_trigger_finish(struct Parse *parse, struct TriggerStep *step_list,
 			goto triggerfinish_cleanup;
 
 		int cursor = parse->nTab++;
-		sqlite3OpenTable(parse, cursor, sys_trigger, OP_OpenWrite);
+		sqlite3OpenTable(parse, cursor, sys_trigger);
 
 		/*
 		 * makerecord(cursor(iRecord),

@@ -383,7 +383,7 @@ sql_table_delete_from(struct Parse *parse, struct SrcList *tab_list,
 				iAddrOnce = sqlite3VdbeAddOp0(v, OP_Once);
 				VdbeCoverage(v);
 			}
-			sqlite3VdbeAddOp4(v, OP_OpenWrite, tab_cursor, 0, 0,
+			sqlite3VdbeAddOp4(v, OP_CursorOpen, tab_cursor, 0, 0,
 					  (void *) space, P4_SPACEPTR);
 			VdbeComment((v, "%s", space->index[0]->def->name));
 

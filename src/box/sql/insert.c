@@ -45,12 +45,10 @@
 void
 sqlite3OpenTable(Parse * pParse,	/* Generate code into this VDBE */
 		 int iCur,	/* The cursor number of the table */
-		 Table * pTab,	/* The table to be opened */
-		 int opcode)	/* OP_OpenRead or OP_OpenWrite */
+		 Table * pTab)	/* The table to be opened */
 {
 	Vdbe *v;
 	v = sqlite3GetVdbe(pParse);
-	assert(opcode == OP_OpenWrite || opcode == OP_OpenRead);
 
 	struct space *space = space_by_id(pTab->def->id);
 	assert(space->index_count > 0);
@@ -199,11 +197,7 @@ vdbe_has_table_read(struct Parse *parser, const struct Table *table)
 	for (int i = 1; i < last_instr; i++) {
 		struct VdbeOp *op = sqlite3VdbeGetOp(v, i);
 		assert(op != NULL);
-		/*
-		 * Currently, there is no difference between Read
-		 * and Write cursors.
-		 */
-		if (op->opcode == OP_OpenRead || op->opcode == OP_OpenWrite) {
+		if (op->opcode == OP_CursorOpen) {
 			assert(op->p4type == P4_SPACEPTR);
 			struct space *space = op->p4.space;
 			if (space->def->id == table->def->id)
@@ -613,9 +607,9 @@ sqlite3Insert(Parse * pParse,	/* Parser context */
 	if (!is_view) {
 		int nIdx;
 		nIdx =
-		    sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0,
-					       -1, 0, &iDataCur, &iIdxCur,
-					       on_error, 0);
+		    sqlite3OpenTableAndIndices(pParse, pTab, 0, -1, 0,
+					       &iDataCur, &iIdxCur, on_error,
+					       0);
 
 		aRegIdx = sqlite3DbMallocRawNN(db, sizeof(int) * (nIdx + 1));
 		if (aRegIdx == 0) {
@@ -1501,7 +1495,6 @@ vdbe_emit_insertion_completion(Vdbe *v, int cursor_id, int tuple_id,
 int
 sqlite3OpenTableAndIndices(Parse * pParse,	/* Parsing context */
 			   Table * pTab,	/* Table to be opened */
-			   int op,		/* OP_OpenRead or OP_OpenWrite */
 			   u8 p5,		/* P5 value for OP_Open* opcodes */
 			   int iBase,		/* Use this for the table cursor, if there is one */
 			   u8 * aToOpen,	/* If not NULL: boolean for each table and index */
@@ -1515,8 +1508,6 @@ sqlite3OpenTableAndIndices(Parse * pParse,	/* Parsing context */
 	Index *pIdx;
 	Vdbe *v;
 
-	assert(op == OP_OpenRead || op == OP_OpenWrite);
-	assert(op == OP_OpenWrite || p5 == 0);
 	v = sqlite3GetVdbe(pParse);
 	assert(v != 0);
 	if (iBase < 0)
@@ -1573,9 +1564,9 @@ sqlite3OpenTableAndIndices(Parse * pParse,	/* Parsing context */
 				p5 = 0;
 			}
 			if (aToOpen == 0 || aToOpen[i + 1]) {
-				sqlite3VdbeAddOp4(v, op, iIdxCur, pIdx->def->iid,
-						  0, (void *) space,
-						  P4_SPACEPTR);
+				sqlite3VdbeAddOp4(v, OP_CursorOpen, iIdxCur,
+						  pIdx->def->iid, 0,
+						  (void *) space, P4_SPACEPTR);
 				sqlite3VdbeChangeP5(v, p5);
 				VdbeComment((v, "%s", pIdx->def->name));
 			}

@@ -3476,7 +3476,7 @@ void sqlite3EndTable(Parse *, Token *, Token *, Select *);
 /**
  * Create cursor which will be positioned to the space/index.
  * It makes space lookup and loads pointer to it into register,
- * which is passes to OP_OpenWrite as an argument.
+ * which is passed to OP_CursorOpen as an argument.
  *
  * @param parse_context Parse context.
  * @param cursor Number of cursor to be created.
@@ -3627,7 +3627,7 @@ Select *sqlite3SelectNew(Parse *, ExprList *, SrcList *, Expr *, ExprList *,
 struct Table *
 sql_list_lookup_table(struct Parse *parse, struct SrcList *src_list);
 
-void sqlite3OpenTable(Parse *, int iCur, Table *, int);
+void sqlite3OpenTable(Parse *, int iCur, Table *);
 /**
  * Generate code for a DELETE FROM statement.
  *
@@ -3922,7 +3922,7 @@ void
 vdbe_emit_insertion_completion(Vdbe *v, int cursor_id, int tuple_id,
 			       struct on_conflict *on_conflict);
 
-int sqlite3OpenTableAndIndices(Parse *, Table *, int, u8, int, u8 *, int *,
+int sqlite3OpenTableAndIndices(Parse *, Table *, u8, int, u8 *, int *,
 			       int *, u8, u8);
 void
 sql_set_multi_write(Parse *, bool);

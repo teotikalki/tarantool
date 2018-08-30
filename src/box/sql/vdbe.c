@@ -3057,7 +3057,18 @@ case OP_TTransaction: {
 	break;
 }
 
-/* Opcode: OpenRead P1 P2 P3 P4 P5
+/* Opcode: CursorReopen P1 P2 P3 P4 P5
+ * Synopsis: index id = P2, space ptr = P4
+ *
+ * The CursorReopen opcode works exactly like CursorOpen except
+ * that it first checks to see if the cursor on P1 is already open
+ * with the same index and if it is this opcode becomes a no-op.
+ * In other words, if the cursor is already open, do not reopen
+ * it.
+ *
+ * The CursorReopen opcode may only be used with P5 == 0.
+ */
+/* Opcode: CursorOpen P1 P2 * P4 P5
  * Synopsis: index id = P2, space ptr = P4
  *
  * Open a cursor for a space specified by pointer in P4 and index
@@ -3065,43 +3076,16 @@ case OP_TTransaction: {
  * values need not be contiguous but all P1 values should be
  * small integers. It is an error for P1 to be negative.
  */
-/* Opcode: ReopenIdx P1 P2 P3 P4 P5
- * Synopsis: index id = P2, space ptr = P4
- *
- * The ReopenIdx opcode works exactly like OpenRead except that
- * it first checks to see if the cursor on P1 is already open
- * with the same index and if it is this opcode becomes a no-op.
- * In other words, if the cursor is already open, do not reopen it.
- *
- * The ReopenIdx opcode may only be used with P5 == 0.
- */
-/* Opcode: OpenWrite P1 P2 P3 P4 P5
- * Synopsis: index id = P2, space ptr = P4
- *
- * For now, OpenWrite is an alias for OpenRead.
- * It exists just due legacy reasons and should be removed:
- * it isn't neccessary to open cursor to make insertion or
- * deletion.
- */
-case OP_ReopenIdx: {
-	int nField;
-	int p2;
-	VdbeCursor *pCur;
-	BtCursor *pBtCur;
-
-	assert(pOp->p5==0 || pOp->p5==OPFLAG_SEEKEQ);
-	pCur = p->apCsr[pOp->p1];
-	p2 = pOp->p2;
-	if (pCur && pCur->uc.pCursor->space == pOp->p4.space &&
-	    pCur->uc.pCursor->index->def->iid == (uint32_t)p2)
+case OP_CursorReopen: {
+	assert(pOp->p5 == 0);
+	struct VdbeCursor *cur = p->apCsr[pOp->p1];
+	if (cur != NULL && cur->uc.pCursor->space == pOp->p4.space &&
+	    cur->uc.pCursor->index->def->iid == (uint32_t)pOp->p2)
 		goto open_cursor_set_hints;
 	/* If the cursor is not currently open or is open on a different
-	 * index, then fall through into OP_OpenRead to force a reopen
+	 * index, then fall through into OP_OpenCursor to force a reopen
 	 */
-case OP_OpenRead:
-case OP_OpenWrite:
-
-	assert(pOp->opcode==OP_OpenWrite || pOp->p5==0 || pOp->p5==OPFLAG_SEEKEQ);
+case OP_CursorOpen:
 	if (box_schema_version() != p->schema_ver &&
 	    (pOp->p5 & OPFLAG_SYSTEMSP) == 0) {
 		p->expired = 1;
@@ -3110,34 +3094,27 @@ case OP_OpenWrite:
 				    "need to re-compile SQL statement");
 		goto abort_due_to_error;
 	}
-	p2 = pOp->p2;
 	struct space *space = pOp->p4.space;
 	assert(space != NULL);
-	struct index *index = space_index(space, p2);
+	struct index *index = space_index(space, pOp->p2);
 	assert(index != NULL);
-	/*
-	 * Since Tarantool iterator provides the full tuple,
-	 * we need a number of fields as wide as the table itself.
-	 * Otherwise, not enough slots for row parser cache are
-	 * allocated in VdbeCursor object.
-	 */
-	nField = space->def->field_count;
-	assert(pOp->p1>=0);
-	assert(nField>=0);
-	pCur = allocateCursor(p, pOp->p1, nField, CURTYPE_TARANTOOL);
-	if (pCur==0) goto no_mem;
-	pCur->nullRow = 1;
-	pBtCur = pCur->uc.pCursor;
-	pBtCur->curFlags |= BTCF_TaCursor;
-	pBtCur->space = space;
-	pBtCur->index = index;
-	pBtCur->eState = CURSOR_INVALID;
+	assert(pOp->p1 >= 0);
+	cur = allocateCursor(p, pOp->p1, space->def->field_count,
+			     CURTYPE_TARANTOOL);
+	if (cur == NULL)
+		goto no_mem;
+	struct BtCursor *bt_cur = cur->uc.pCursor;
+	bt_cur->curFlags |= BTCF_TaCursor;
+	bt_cur->space = space;
+	bt_cur->index = index;
+	bt_cur->eState = CURSOR_INVALID;
 	/* Key info still contains sorter order and collation. */
-	pCur->key_def = index->def->key_def;
-
+	cur->key_def = index->def->key_def;
+	cur->nullRow = 1;
 open_cursor_set_hints:
-	pCur->uc.pCursor->hints = pOp->p5 & OPFLAG_SEEKEQ;
-	if (rc) goto abort_due_to_error;
+	cur->uc.pCursor->hints = pOp->p5 & OPFLAG_SEEKEQ;
+	if (rc != 0)
+		goto abort_due_to_error;
 	break;
 }
 

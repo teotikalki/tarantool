@@ -4678,12 +4678,9 @@ sqlite3WhereBegin(Parse * pParse,	/* The parser context */
 			/* Do nothing */
 		} else if ((pLoop->wsFlags & WHERE_IDX_ONLY) == 0 &&
 			   (wctrlFlags & WHERE_OR_SUBCLAUSE) == 0) {
-			int op = OP_OpenRead;
-			if (pWInfo->eOnePass != ONEPASS_OFF) {
-				op = OP_OpenWrite;
+			if (pWInfo->eOnePass != ONEPASS_OFF)
 				pWInfo->aiCurOnePass[0] = pTabItem->iCursor;
-			};
-			sqlite3OpenTable(pParse, pTabItem->iCursor, pTab, op);
+			sqlite3OpenTable(pParse, pTabItem->iCursor, pTab);
 			assert(pTabItem->iCursor == pLevel->iTabCur);
 			testcase(pWInfo->eOnePass == ONEPASS_OFF
 				 && pTab->nCol == BMS - 1);
@@ -4702,7 +4699,7 @@ sqlite3WhereBegin(Parse * pParse,	/* The parser context */
 			struct index_def *idx_def = pLoop->index_def;
 			struct space *space = space_cache_find(pTabItem->pTab->def->id);
 			int iIndexCur;
-			int op = OP_OpenRead;
+			int op = OP_CursorOpen;
 			/* iAuxArg is always set if to a positive value if ONEPASS is possible */
 			assert(iAuxArg != 0
 			       || (pWInfo->
@@ -4756,12 +4753,12 @@ sqlite3WhereBegin(Parse * pParse,	/* The parser context */
 					}
 				}
 				assert(wctrlFlags & WHERE_ONEPASS_DESIRED);
-				op = OP_OpenWrite;
+				op = OP_CursorOpen;
 				pWInfo->aiCurOnePass[1] = iIndexCur;
 			} else if (iAuxArg
 				   && (wctrlFlags & WHERE_OR_SUBCLAUSE) != 0) {
 				iIndexCur = iAuxArg;
-				op = OP_ReopenIdx;
+				op = OP_CursorReopen;
 			} else {
 				iIndexCur = pParse->nTab++;
 			}

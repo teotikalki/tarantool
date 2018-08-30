@@ -817,7 +817,7 @@ analyzeOneTable(Parse * pParse,	/* Parser context */
 	iTabCur = iTab++;
 	iIdxCur = iTab++;
 	pParse->nTab = MAX(pParse->nTab, iTab);
-	sqlite3OpenTable(pParse, iTabCur, pTab, OP_OpenRead);
+	sqlite3OpenTable(pParse, iTabCur, pTab);
 	sqlite3VdbeLoadString(v, regTabname, pTab->def->name);
 
 	for (pIdx = pTab->pIndex; pIdx; pIdx = pIdx->pNext) {
@@ -885,7 +885,7 @@ analyzeOneTable(Parse * pParse,	/* Parser context */
 		struct space *space = space_by_id(pIdx->def->space_id);
 		int idx_id = pIdx->def->iid;
 		assert(space != NULL);
-		sqlite3VdbeAddOp4(v, OP_OpenRead, iIdxCur, idx_id, 0,
+		sqlite3VdbeAddOp4(v, OP_CursorOpen, iIdxCur, idx_id, 0,
 				  (void *) space, P4_SPACEPTR);
 		VdbeComment((v, "%s", pIdx->def->name));
 

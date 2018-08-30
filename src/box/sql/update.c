@@ -391,9 +391,8 @@ sqlite3Update(Parse * pParse,		/* The parser context */
 			if (aiCurOnePass[1] >= 0)
 				aToOpen[aiCurOnePass[1] - iBaseCur] = 0;
 		}
-		sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0,
-					   iBaseCur, aToOpen, 0, 0,
-					   on_error, 1);
+		sqlite3OpenTableAndIndices(pParse, pTab, 0, iBaseCur, aToOpen,
+					   0, 0, on_error, 1);
 	}
 
 	/* Top of the update loop */
