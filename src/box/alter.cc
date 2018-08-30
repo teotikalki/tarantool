@@ -1036,18 +1036,19 @@ class ModifySpaceFormat: public AlterSpaceOp
 {
 public:
     ModifySpaceFormat(struct alter_space *alter) : AlterSpaceOp(alter) {}
-    virtual void alter(struct alter_space *alter);
+
+    virtual void
+    alter(struct alter_space *alter);
 };
 
 void
-ModifySpaceFormat:: alter(struct alter_space * alter)
+ModifySpaceFormat::alter(struct alter_space *alter)
 {
-	struct tuple_format *format = alter->new_space != NULL ?
-				      alter->new_space->format : NULL;
+	struct tuple_format *format = alter->new_space->format;
 	if (format == NULL)
 		return;
+	format->epoch = alter->old_space->format->epoch;
 	struct rlist *key_list = &alter->key_list;
-	bool is_format_epoch_changed = false;
 	struct index_def *index_def;
 	rlist_foreach_entry(index_def, key_list, link) {
 		struct key_part *part = index_def->key_def->parts;
@@ -1056,15 +1057,12 @@ ModifySpaceFormat:: alter(struct alter_space * alter)
 		for (; part < parts_end; part++) {
 			struct tuple_field *field =
 				&format->fields[part->fieldno];
-			if (field->offset_slot != part->offset_slot)
-				is_format_epoch_changed = true;
+			if (field->offset_slot != part->offset_slot) {
+				++format->epoch;
+				return;
+			}
 		}
 	}
-	format->epoch = alter->old_space != NULL &&
-			alter->old_space->format != NULL ?
-			alter->old_space->format->epoch : 1;
-	if (is_format_epoch_changed)
-		format->epoch++;
 }
 
 
@@ -1352,7 +1350,6 @@ RebuildIndex::prepare(struct alter_space *alter)
 	/* Get the new index and build it.  */
 	new_index = space_index(alter->new_space, new_index_def->iid);
 	assert(new_index != NULL);
-	assert(alter->new_space != NULL && alter->old_space != NULL);
 	space_build_index_xc(alter->old_space, new_index,
 			     alter->new_space->format);
 }

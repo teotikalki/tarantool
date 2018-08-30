@@ -284,11 +284,8 @@ memtx_bitset_index_replace(struct index *base, struct tuple *old_tuple,
 
 	if (new_tuple != NULL) {
 		const char *field =
-			tuple_field_by_part_raw(tuple_format(new_tuple),
-						tuple_data(new_tuple),
-						tuple_field_map(new_tuple),
-						(struct key_part *)
-						base->def->key_def->parts);
+			tuple_field_by_part(new_tuple,
+					    base->def->key_def->parts);
 		uint32_t key_len;
 		const void *key = make_key(field, &key_len);
 #ifndef OLD_GOOD_BITSET

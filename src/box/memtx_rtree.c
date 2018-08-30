@@ -112,11 +112,8 @@ extract_rectangle(struct rtree_rect *rect, const struct tuple *tuple,
 		  struct index_def *index_def)
 {
 	assert(index_def->key_def->part_count == 1);
-	const char *elems =
-		tuple_field_by_part_raw(tuple_format(tuple), tuple_data(tuple),
-					tuple_field_map(tuple),
-					(struct key_part *)
-					index_def->key_def->parts);
+	const char *elems = tuple_field_by_part(tuple,
+						index_def->key_def->parts);
 	unsigned dimension = index_def->opts.dimension;
 	uint32_t count = mp_decode_array(&elems);
 	return mp_decode_rect(rect, dimension, elems, count, "Field");

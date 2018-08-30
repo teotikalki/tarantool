@@ -158,11 +158,8 @@ struct TupleHash
 		uint32_t carry = 0;
 		uint32_t total_size = 0;
 		const char *field =
-			tuple_field_by_part_raw(tuple_format(tuple),
-						tuple_data(tuple),
-						tuple_field_map(tuple),
-						(struct key_part *)
-						key_def->parts);
+			tuple_field_by_part(tuple,
+					    (struct key_part *) key_def->parts);
 		TupleFieldHash<TYPE, MORE_TYPES...>::
 			hash(&field, &h, &carry, &total_size);
 		return PMurHash32_Result(h, carry, total_size);
@@ -175,11 +172,8 @@ struct TupleHash<FIELD_TYPE_UNSIGNED> {
 			     const struct key_def *key_def)
 	{
 		const char *field =
-			tuple_field_by_part_raw(tuple_format(tuple),
-						tuple_data(tuple),
-						tuple_field_map(tuple),
-						(struct key_part *)
-						key_def->parts);
+			tuple_field_by_part(tuple,
+					    (struct key_part *) key_def->parts);
 		uint64_t val = mp_decode_uint(&field);
 		if (likely(val <= UINT32_MAX))
 			return val;
@@ -322,10 +316,8 @@ tuple_hash_key_part(uint32_t *ph1, uint32_t *pcarry,
 		    const struct tuple *tuple,
 		    const struct key_part *part)
 {
-	const char *field =
-		tuple_field_by_part_raw(tuple_format(tuple), tuple_data(tuple),
-					tuple_field_map(tuple),
-					(struct key_part *)part);
+	const char *field = tuple_field_by_part(tuple,
+						(struct key_part *) part);
 	if (field == NULL)
 		return tuple_hash_null(ph1, pcarry);
 	return tuple_hash_field(ph1, pcarry, &field, part->coll);
