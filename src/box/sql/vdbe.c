@@ -610,6 +610,10 @@ int sqlite3VdbeExec(Vdbe *p)
 	u64 start;                 /* CPU clock count at start of opcode */
 #endif
 	struct session *user_session = current_session();
+	/* Opcode to where we should jump on error. */
+	int op_clean_on_error = p->nOp - 1;
+	/* On error rc is saved here before clean-up */
+	int saved_rc = 0;
 	/*** INSERT STACK UNION HERE ***/
 
 	assert(p->magic==VDBE_MAGIC_RUN);  /* sqlite3_step() verifies this */
@@ -663,10 +667,14 @@ int sqlite3VdbeExec(Vdbe *p)
 	sqlite3EndBenignMalloc();
 #endif
 	for(pOp=&aOp[p->pc]; 1; pOp++) {
-		/* Errors are detected by individual opcodes, with an immediate
-		 * jumps to abort_due_to_error.
+		/**
+		 * Errors are detected by individual opcodes, with
+		 * an immediate jumps to abort_due_to_error. Only
+		 * exception - opcode OP_SInsert in which on error
+		 * jump should be on jump_to_destructors. In this
+		 * case rc saved in saved_rc.
 		 */
-		assert(rc==SQLITE_OK);
+		assert(rc==SQLITE_OK || saved_rc != 0);
 
 		assert(pOp>=aOp && pOp<&aOp[p->nOp]);
 #ifdef VDBE_PROFILE
@@ -845,6 +853,21 @@ case OP_Gosub: {            /* jump */
 			jump_to_p2:
 	pOp = &aOp[pOp->p2 - 1];
 	break;
+			jump_to_destructors:
+	saved_rc = rc;
+	pOp = &aOp[op_clean_on_error - 1];
+	break;
+}
+
+/* Opcode:  Error * * * * *
+ *
+ * Retrieve saved rc and jump to abort_due_to_error. Should be
+ * located after destructors of created in current statement
+ * spaces, indexes etc.
+ */
+case OP_Error: {
+	rc = saved_rc;
+	goto abort_due_to_error;
 }
 
 /* Opcode:  Return P1 * * * *
@@ -4345,9 +4368,13 @@ case OP_SInsert: {
 	assert(space_is_system(space));
 	rc = tarantoolSqlite3Insert(space, pIn2->z, pIn2->z + pIn2->n);
 	if (rc)
-		goto abort_due_to_error;
+		goto jump_to_destructors;
 	if (pOp->p5 & OPFLAG_NCHANGE)
 		p->nChange++;
+	/* OP_SDelete - destructors of newly created record. */
+	op_clean_on_error--;
+	/* OP_MakeRecord - make key for destructor. */
+	op_clean_on_error--;
 	break;
 }
 
@@ -4371,8 +4398,17 @@ case OP_SDelete: {
 	rc = sql_delete_by_key(space, 0, pIn2->z, pIn2->n);
 	if (rc)
 		goto abort_due_to_error;
-	if (pOp->p5 & OPFLAG_NCHANGE)
-		p->nChange++;
+	if ((pOp->p5 & OPFLAG_DESTRUCTOR) == 0) {
+		if (pOp->p5 & OPFLAG_NCHANGE)
+			p->nChange++;
+	} else {
+		if ((pOp->p5 & OPFLAG_CLEAR_HASH) != 0) {
+			pIn3 = &aMem[pOp->p3];
+			sqlite3HashInsert(&db->pSchema->tblHash, pIn3->z, 0);
+		}
+		if (pOp->p5 & OPFLAG_NCHANGE)
+			p->nChange--;
+	}
 	break;
 }
 

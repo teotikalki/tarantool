@@ -55,6 +55,62 @@
 #include "box/tuple_format.h"
 #include "box/coll_id_cache.h"
 
+/**
+ * Last element of list that contains some information about
+ * records which were inserted into system spaces.
+ */
+static struct saved_records
+{
+	/* Pointer on previous element of the list. */
+	struct saved_records *prev;
+	/* Id of space in which record were inserted. */
+	int space_id;
+	/* First register of key of record. */
+	int record_key;
+	/* Length of key of record. */
+	int record_key_len;
+	/* Register with table name.*/
+	int record_name;
+	/* Flags of this element of list. */
+	int flag;
+} *saved_records = NULL;
+
+/**
+ * Save inserted in system space record in list saved_records.
+ *
+ * @param parser SQL Parser object.
+ * @param space_id Id of table in which record is inserted.
+ * @param record_key Register that contains first element of key.
+ * @param record_key_len Exact number of elements of key.
+ * @param record_name Register contains name of table which were
+ *        created when record was inserted into box.space._space.
+ * @param flag OPFLAG_NCHANGE or 0.
+ * @retval -1 memory error.
+ * @retval 0 success.
+ */
+int
+save_record(Parse *parser, int space_id, int record_key, int record_key_len,
+	    int record_name, int flag)
+{
+	struct saved_records *tmp = malloc(sizeof(*tmp));
+	if (tmp == NULL) {
+		diag_set(OutOfMemory, sizeof(*tmp), "malloc", "saved_records");
+		parser->rc = SQL_TARANTOOL_ERROR;
+		parser->nErr++;
+		return -1;
+	}
+	tmp->prev = saved_records;
+	tmp->space_id = space_id;
+	tmp->record_key = record_key;
+	tmp->record_key_len = record_key_len;
+	tmp->record_name = record_name;
+	tmp->flag = flag | OPFLAG_DESTRUCTOR;
+	if (record_name != 0)
+		tmp->flag |= OPFLAG_CLEAR_HASH;
+	saved_records = tmp;
+	return 0;
+}
+
 void
 sql_finish_coding(struct Parse *parse_context)
 {
@@ -62,6 +118,23 @@ sql_finish_coding(struct Parse *parse_context)
 	struct sqlite3 *db = parse_context->db;
 	struct Vdbe *v = sqlite3GetVdbe(parse_context);
 	sqlite3VdbeAddOp0(v, OP_Halt);
+	/**
+	 * Destructors for all created in current statement
+	 * spaces, indexes, sequences etc. They arranged in
+	 * reverse order.
+	 */
+	while (saved_records != NULL) {
+		int record_reg = ++parse_context->nMem;
+		sqlite3VdbeAddOp3(v, OP_MakeRecord, saved_records->record_key,
+				  saved_records->record_key_len, record_reg);
+		sqlite3VdbeAddOp3(v, OP_SDelete, saved_records->space_id,
+				  record_reg, saved_records->record_name);
+		sqlite3VdbeChangeP5(v, saved_records->flag);
+		struct saved_records *tmp = saved_records;
+		saved_records = saved_records->prev;
+		free(tmp);
+	}
+	sqlite3VdbeAddOp0(v, OP_Error);
 	if (db->mallocFailed || parse_context->nErr != 0) {
 		if (parse_context->rc == SQLITE_OK)
 			parse_context->rc = SQLITE_ERROR;
@@ -1240,8 +1313,13 @@ createIndex(Parse * pParse, Index * pIndex, int iSpaceId, int iIndexId,
 	 * Non-NULL value means that index has been created via
 	 * separate CREATE INDEX statement.
 	 */
-	if (zSql != NULL)
+	if (zSql != NULL) {
 		sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
+		save_record(pParse, BOX_INDEX_ID, iFirstCol, 2, 0,
+			    OPFLAG_NCHANGE);
+	} else {
+		save_record(pParse, BOX_INDEX_ID, iFirstCol, 2, 0, 0);
+	}
 	return;
 error:
 	pParse->rc = SQL_TARANTOOL_ERROR;
@@ -1344,6 +1422,8 @@ createSpace(Parse * pParse, int iSpaceId, char *zStmt)
 	sqlite3VdbeAddOp3(v, OP_MakeRecord, iFirstCol, 7, iRecord);
 	sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SPACE_ID, iRecord);
 	sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
+	save_record(pParse, BOX_SPACE_ID, iFirstCol, 1, iFirstCol + 2,
+		    OPFLAG_NCHANGE);
 	return;
 error:
 	pParse->nErr++;
@@ -1550,6 +1630,8 @@ vdbe_emit_fkey_create(struct Parse *parse_context, const struct fkey_def *fk)
 	sqlite3VdbeAddOp2(vdbe, OP_SInsert, BOX_FK_CONSTRAINT_ID,
 			  constr_tuple_reg + 9);
 	sqlite3VdbeChangeP5(vdbe, OPFLAG_NCHANGE);
+	save_record(parse_context, BOX_FK_CONSTRAINT_ID, constr_tuple_reg, 2, 0,
+		    OPFLAG_NCHANGE);
 	sqlite3ReleaseTempRange(parse_context, constr_tuple_reg, 10);
 	return;
 error:
@@ -1732,12 +1814,16 @@ sqlite3EndTable(Parse * pParse,	/* Parse context */
 						 p->def->name);
 		sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SEQUENCE_ID,
 				  reg_seq_record);
+		save_record(pParse, BOX_SEQUENCE_ID, reg_seq_record + 1, 1, 0,
+			    0);
 		/* Do an insertion into _space_sequence. */
 		int reg_space_seq_record =
 			emitNewSysSpaceSequenceRecord(pParse, reg_space_id,
 						      reg_seq_id);
 		sqlite3VdbeAddOp2(v, OP_SInsert, BOX_SPACE_SEQUENCE_ID,
 				  reg_space_seq_record);
+		save_record(pParse, BOX_SPACE_SEQUENCE_ID,
+			    reg_space_seq_record + 1, 1, 0, 0);
 	}
 
 	/*

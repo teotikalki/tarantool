@@ -2843,6 +2843,10 @@ struct Parse {
 #define OPFLAG_PERMUTE       0x01	/* OP_Compare: use the permutation */
 #define OPFLAG_SAVEPOSITION  0x02	/* OP_Delete: keep cursor position */
 #define OPFLAG_AUXDELETE     0x04	/* OP_Delete: index in a DELETE op */
+/* OP_SDelete: work as destructor. */
+#define OPFLAG_DESTRUCTOR    0x02
+/* OP_SDelete: remove table from tblHash. */
+#define OPFLAG_CLEAR_HASH    0x04
 
 #define OPFLAG_SAME_FRAME    0x01	/* OP_FCopy: use same frame for source
 					 * register
