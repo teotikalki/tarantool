@@ -43,11 +43,27 @@ format = {{name = 'X', type = 'unsigned'}}
 t = {513, 1, 'test', 'memtx', 0, opts, format}
 s = box.space._space:insert(t)
 
-
 --
 -- gh-3611: Segfault on table creation with check referencing this table
 --
 box.sql.execute("CREATE TABLE w2 (s1 INT PRIMARY KEY, CHECK ((SELECT COUNT(*) FROM w2) = 0));")
 box.sql.execute("DROP TABLE w2;")
+
+--
+-- gh-3653: Dissallow bindings for DDL
+--
+box.sql.execute("CREATE TABLE t1(a INT PRIMARY KEY, b INT);")
+space_id = box.space.T1.id
+box.sql.execute("CREATE TRIGGER tr1 AFTER INSERT ON t1 WHEN new.a = ? BEGIN SELECT 1; END;")
+tuple = {"TR1", space_id, {sql = [[CREATE TRIGGER tr1 AFTER INSERT ON t1 WHEN new.a = ? BEGIN SELECT 1; END;]]}}
+box.space._trigger:insert(tuple)
+box.sql.execute("DROP TABLE t1;")
+
+box.sql.execute("CREATE TABLE t5(x primary key, y,CHECK( x*y<? ));")
+
+opts = {checks = {{expr = '?>5', name = 'ONE'}}}
+format = {{name = 'X', type = 'unsigned'}}
+t = {513, 1, 'test', 'memtx', 0, opts, format}
+s = box.space._space:insert(t)
 
 test_run:cmd("clear filter")
