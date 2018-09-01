@@ -168,12 +168,13 @@ tuple_validate_raw(struct tuple_format *format, const char *tuple)
 					 field->is_nullable))
 			return -1;
 		/* Check all JSON paths. */
-		if (field->childs != NULL &&
-		    tuple_field_bypass_and_init(field, i, tuple, &pos,
-						NULL) != 0)
-			return -1;
-		if (field->childs == NULL)
+		if (field->childs != NULL) {
+			if (tuple_field_bypass_and_init(field, i, tuple, &pos,
+							NULL) != 0)
+				return -1;
+		} else {
 			mp_next(&pos);
+		}
 	}
 	return 0;
 }

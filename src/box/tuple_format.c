@@ -295,7 +295,6 @@ tuple_field_bypass_and_init(const struct tuple_field *field, uint32_t idx,
 			    uint32_t *field_map)
 {
 	assert(offset != NULL);
-	int rc = 0;
 	const char *mp_data = *offset;
 	const char *valid_type_str = NULL;
 	const char *err = NULL;
@@ -317,9 +316,9 @@ tuple_field_bypass_and_init(const struct tuple_field *field, uint32_t idx,
 
 			const char *raw = *offset;
 			uint32_t map_idx = 0;
-			rc = tuple_field_go_to_key(&raw, ht_record->str,
-						   (int)ht_record->len,
-						   &map_idx);
+			int rc = tuple_field_go_to_key(&raw, ht_record->str,
+						       (int)ht_record->len,
+						       &map_idx);
 			if (rc != 0 && !leaf->is_nullable) {
 				err = tt_sprintf("map doesn't contain key "
 						 "'%.*s' defined in index",
@@ -392,10 +391,8 @@ tuple_field_bypass_and_init(const struct tuple_field *field, uint32_t idx,
 	}
 	assert(offset != NULL);
 	if (field_map != NULL &&
-	    field->offset_slot != TUPLE_OFFSET_SLOT_NIL) {
-		field_map[field->offset_slot] =
-			(uint32_t) (*offset - tuple);
-	}
+	    field->offset_slot != TUPLE_OFFSET_SLOT_NIL)
+		field_map[field->offset_slot] = (uint32_t) (*offset - tuple);
 	mp_next(offset);
 	return 0;
 
@@ -404,15 +401,13 @@ error_type_mistmatch:
 			 mp_type_strs[type], valid_type_str);
 error_invalid_document:
 	assert(err != NULL);
-	do {
-		char *data_buff = tt_static_buf();
-		mp_snprint(data_buff, TT_STATIC_BUF_LEN, mp_data);
-		const char *err_msg =
-			tt_sprintf("invalid field %d document content '%s': %s",
-				   idx + TUPLE_INDEX_BASE, data_buff, err);
-		diag_set(ClientError, ER_DATA_STRUCTURE_MISMATCH, err_msg);
-		return -1;
-	} while (0);
+	char *data_buff = tt_static_buf();
+	mp_snprint(data_buff, TT_STATIC_BUF_LEN, mp_data);
+	const char *err_msg =
+		tt_sprintf("invalid field %d document content '%s': %s",
+			   idx + TUPLE_INDEX_BASE, data_buff, err);
+	diag_set(ClientError, ER_DATA_STRUCTURE_MISMATCH, err_msg);
+	return -1;
 }
 
 /**
@@ -460,7 +455,7 @@ tuple_format_add_json_path(struct tuple_format *format, const char *path,
 					   path_len, path,
 					   field_type_strs[field->type]);
 			diag_set(ClientError,  ER_WRONG_INDEX_OPTIONS,
-				node.num, err);
+				 node.num, err);
 			return -1;
 		}
 		if (field->is_nullable != is_nullable) {
@@ -568,7 +563,7 @@ tuple_format_create(struct tuple_format *format, struct key_def * const *keys,
 
 			if (part->path != NULL) {
 				field->is_key_part = true;
-				assert(is_sequential == false);
+				assert(! is_sequential);
 				struct tuple_field *leaf = NULL;
 				if (tuple_format_add_json_path(format,
 							       part->path,
@@ -593,12 +588,10 @@ tuple_format_create(struct tuple_format *format, struct key_def * const *keys,
 			 * used in tuple_format.
 			 */
 			if (field_type1_contains_type2(field->type,
-						       part->type) &&
-			    part->path == NULL) {
+						       part->type)) {
 				field->type = part->type;
 			} else if (! field_type1_contains_type2(part->type,
-								field->type) &&
-				   part->path == NULL) {
+								field->type)) {
 				const char *name;
 				int fieldno = part->fieldno + TUPLE_INDEX_BASE;
 				if (part->fieldno >= field_count) {
@@ -626,10 +619,8 @@ tuple_format_create(struct tuple_format *format, struct key_def * const *keys,
 			 * so we don't store an offset for it.
 			 */
 			if (field->offset_slot == TUPLE_OFFSET_SLOT_NIL &&
-			    is_sequential == false && part->fieldno > 0) {
-
+			    !is_sequential && part->fieldno > 0)
 				field->offset_slot = --current_slot;
-			}
 		}
 	}
 
@@ -708,10 +699,8 @@ tuple_format_alloc(struct key_def * const *keys, uint16_t key_count,
 		for (; part < pend; part++) {
 			if (part->path != NULL &&
 			    json_path_hash_insert(path_hash, part->path,
-						  part->path_len, NULL) != 0) {
-				json_path_hash_delete(path_hash);
-				return NULL;
-			}
+						  part->path_len, NULL) != 0)
+				goto error;
 			index_field_count = MAX(index_field_count,
 						part->fieldno + 1);
 		}
@@ -742,14 +731,14 @@ tuple_format_alloc(struct key_def * const *keys, uint16_t key_count,
 	if (format == NULL) {
 		diag_set(OutOfMemory, sizeof(struct tuple_format), "malloc",
 			 "tuple format");
-		return NULL;
+		goto error;
 	}
 	if (dict == NULL) {
 		assert(space_field_count == 0);
 		format->dict = tuple_dictionary_new(NULL, 0);
 		if (format->dict == NULL) {
 			free(format);
-			return NULL;
+			goto error;
 		}
 	} else {
 		format->dict = dict;
@@ -768,6 +757,9 @@ tuple_format_alloc(struct key_def * const *keys, uint16_t key_count,
 	format->min_field_count = 0;
 	format->path_hash = path_hash;
 	return format;
+error:
+	json_path_hash_delete(path_hash);
+	return NULL;
 }
 
 /** Free tuple format resources, doesn't unregister. */
@@ -945,10 +937,6 @@ tuple_init_field_map(const struct tuple_format *format, uint32_t *field_map,
 		return -1;
 	}
 
-	/*
-	 * First field is simply accessible, store offset to it
-	 * only for JSON path.
-	 */
 	uint32_t i = 0;
 	enum mp_type mp_type;
 	const struct tuple_field *field = &format->fields[0];
@@ -961,6 +949,10 @@ tuple_init_field_map(const struct tuple_format *format, uint32_t *field_map,
 		       format->field_map_size);
 	}
 	if (field->childs == NULL) {
+		/*
+		 * First field is simply accessible, do not store
+		 * offset to it.
+		 */
 		mp_type = mp_typeof(*pos);
 		if (key_mp_type_validate(field->type, mp_type, ER_FIELD_TYPE,
 					 TUPLE_INDEX_BASE, field->is_nullable))

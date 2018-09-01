@@ -544,8 +544,6 @@ static int
 key_def_normalize_json_path(struct region *region, struct key_part_def *part,
 			    char **path_extra, uint32_t *path_extra_size)
 {
-	const char *err_msg = NULL;
-
 	uint32_t allocated_size = *path_extra_size;
 	char *path = *path_extra;
 
@@ -589,7 +587,8 @@ key_def_normalize_json_path(struct region *region, struct key_part_def *part,
 	uint32_t lexemes = 0;
 	do {
 		if (node.type == JSON_PATH_NUM) {
-			path += sprintf(path, "[%u]", (uint32_t) node.num);
+			path += sprintf(path, "[%llu]",
+					(unsigned long long) node.num);
 		} else if (node.type == JSON_PATH_STR) {
 			path += sprintf(path, "[\"%.*s\"]", node.len, node.str);
 		} else {
@@ -622,10 +621,11 @@ key_def_normalize_json_path(struct region *region, struct key_part_def *part,
 	}
 	return 0;
 
-error_invalid_json:
-	err_msg = tt_sprintf("invalid JSON path '%.*s': path has invalid "
-			     "structure (error at position %d)", parser.src_len,
-			     parser.src, rc);
+error_invalid_json: ;
+	const char *err_msg =
+		tt_sprintf("invalid JSON path '%.*s': path has invalid "\
+			   "structure (error at position %d)", parser.src_len,
+			   parser.src, rc);
 	diag_set(ClientError, ER_WRONG_INDEX_OPTIONS,
 		 part->fieldno + TUPLE_INDEX_BASE, err_msg);
 	return -1;
@@ -704,19 +704,20 @@ key_def_decode_parts_160(struct key_part_def *parts, uint32_t part_count,
 	return 0;
 }
 
-const struct key_part *
-key_def_find(const struct key_def *key_def, uint32_t fieldno, const char *path,
-	     uint32_t path_len)
+bool
+key_def_contains_part(const struct key_def *key_def,
+		      const struct key_part *to_find)
 {
 	const struct key_part *part = key_def->parts;
 	const struct key_part *end = part + key_def->part_count;
 	for (; part != end; part++) {
-		if (part->fieldno == fieldno && part->path_len == path_len &&
-		    (part->path == NULL ||
-		     memcmp(part->path, path, path_len) == 0))
-			return part;
+		if (part->fieldno == to_find->fieldno &&
+		    part->path_len == to_find->path_len &&
+		    (part->path == NULL || memcmp(part->path, to_find->path,
+						  to_find->path_len) == 0))
+			return true;
 	}
-	return NULL;
+	return false;
 }
 
 bool
@@ -725,8 +726,7 @@ key_def_contains(const struct key_def *first, const struct key_def *second)
 	const struct key_part *part = second->parts;
 	const struct key_part *end = part + second->part_count;
 	for (; part != end; part++) {
-		if (key_def_find(first, part->fieldno, part->path,
-				 part->path_len) == NULL)
+		if (! key_def_contains_part(first, part))
 			return false;
 	}
 	return true;
@@ -750,8 +750,7 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	part = second->parts;
 	end = part + second->part_count;
 	for (; part != end; part++) {
-		if (key_def_find(first, part->fieldno, part->path,
-				 part->path_len) != NULL)
+		if (key_def_contains_part(first, part))
 			--new_part_count;
 		else if (part->path != NULL)
 			sz += part->path_len + 1;
@@ -788,8 +787,7 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	part = second->parts;
 	end = part + second->part_count;
 	for (; part != end; part++) {
-		if (key_def_find(first, part->fieldno, part->path,
-				 part->path_len) != NULL)
+		if (key_def_contains_part(first, part))
 			continue;
 		if (part->path != NULL) {
 			new_def->parts[pos].path = data;
