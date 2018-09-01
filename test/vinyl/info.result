@@ -210,7 +210,13 @@ istat()
 ...
 gstat()
 ---
-- quota:
+- disk:
+    dump_total: 0
+    data_size: 0
+    data_files: 0
+    compact_total: 0
+    index_size: 0
+  quota:
     limit: 134217728
     used: 0
   memory:
@@ -667,6 +673,15 @@ box.rollback()
 --
 -- Global statistics.
 --
+-- dump and compaction totals
+gstat().disk.dump_total == istat().disk.dump.out.bytes
+---
+- true
+...
+gstat().disk.compact_total == istat().disk.compact.out.bytes
+---
+- true
+...
 -- use memory
 st = gstat()
 ---
@@ -1008,7 +1023,13 @@ istat()
 ...
 gstat()
 ---
-- quota:
+- disk:
+    dump_total: 0
+    data_size: 104300
+    data_files: 2
+    compact_total: 0
+    index_size: 1190
+  quota:
     limit: 134217728
     used: 262583
   memory:
@@ -1113,6 +1134,14 @@ gst.memory.bloom_filter == 0
 ---
 - true
 ...
+gst.disk.data_size == 0
+---
+- true
+...
+gst.disk.index_size == 0
+---
+- true
+...
 box.snapshot()
 ---
 - ok
@@ -1165,6 +1194,14 @@ gst.memory.page_index == st1.disk.index_size + st2.disk.index_size
 - true
 ...
 gst.memory.bloom_filter == st1.disk.bloom_size + st2.disk.bloom_size
+---
+- true
+...
+gst.disk.data_size == s:bsize()
+---
+- true
+...
+gst.disk.index_size == i1:bsize() + i2:bsize()
 ---
 - true
 ...
@@ -1287,6 +1324,14 @@ gst.memory.bloom_filter == st1.disk.bloom_size + st2.disk.bloom_size
 ---
 - true
 ...
+gst.disk.data_size == s:bsize()
+---
+- true
+...
+gst.disk.index_size == i1:bsize() + i2:bsize()
+---
+- true
+...
 s:drop()
 ---
 ...
@@ -1298,6 +1343,14 @@ gst.memory.page_index == 0
 - true
 ...
 gst.memory.bloom_filter == 0
+---
+- true
+...
+gst.disk.data_size == 0
+---
+- true
+...
+gst.disk.index_size == 0
 ---
 - true
 ...

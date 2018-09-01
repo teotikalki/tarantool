@@ -685,32 +685,56 @@ vy_lsm_compact_priority(struct vy_lsm *lsm)
 void
 vy_lsm_add_run(struct vy_lsm *lsm, struct vy_run *run)
 {
+	struct vy_lsm_env *env = lsm->env;
+	size_t bloom_size = vy_run_bloom_size(run);
+	size_t page_index_size = run->page_index_size;
+
 	assert(rlist_empty(&run->in_lsm));
 	rlist_add_entry(&lsm->runs, run, in_lsm);
 	lsm->run_count++;
 	vy_disk_stmt_counter_add(&lsm->stat.disk.count, &run->count);
 
-	lsm->bloom_size += vy_run_bloom_size(run);
-	lsm->page_index_size += run->page_index_size;
+	lsm->bloom_size += bloom_size;
+	lsm->page_index_size += page_index_size;
 
-	lsm->env->bloom_size += vy_run_bloom_size(run);
-	lsm->env->page_index_size += run->page_index_size;
+	env->bloom_size += bloom_size;
+	env->page_index_size += page_index_size;
+	env->data_file_count++;
+	/* Data size is consistent with space.bsize. */
+	if (lsm->index_id == 0)
+		env->disk_data_size += run->count.bytes;
+	/* Index size is consistent with index.bsize. */
+	env->disk_index_size += bloom_size + page_index_size;
+	if (lsm->index_id > 0)
+		env->disk_index_size += run->count.bytes;
 }
 
 void
 vy_lsm_remove_run(struct vy_lsm *lsm, struct vy_run *run)
 {
+	struct vy_lsm_env *env = lsm->env;
+	size_t bloom_size = vy_run_bloom_size(run);
+	size_t page_index_size = run->page_index_size;
+
 	assert(lsm->run_count > 0);
 	assert(!rlist_empty(&run->in_lsm));
 	rlist_del_entry(run, in_lsm);
 	lsm->run_count--;
 	vy_disk_stmt_counter_sub(&lsm->stat.disk.count, &run->count);
 
-	lsm->bloom_size -= vy_run_bloom_size(run);
-	lsm->page_index_size -= run->page_index_size;
+	lsm->bloom_size -= bloom_size;
+	lsm->page_index_size -= page_index_size;
 
-	lsm->env->bloom_size -= vy_run_bloom_size(run);
-	lsm->env->page_index_size -= run->page_index_size;
+	env->bloom_size -= bloom_size;
+	env->page_index_size -= page_index_size;
+	env->data_file_count--;
+	/* Data size is consistent with space.bsize. */
+	if (lsm->index_id == 0)
+		env->disk_data_size -= run->count.bytes;
+	/* Index size is consistent with index.bsize. */
+	env->disk_index_size -= bloom_size + page_index_size;
+	if (lsm->index_id > 0)
+		env->disk_index_size -= run->count.bytes;
 }
 
 void

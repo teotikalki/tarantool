@@ -298,6 +298,20 @@ vy_info_append_memory(struct vy_env *env, struct info_handler *h)
 	info_table_end(h);
 }
 
+static void
+vy_info_append_disk(struct vy_env *env, struct info_handler *h)
+{
+	struct vy_lsm_env *lsm_env = &env->lsm_env;
+
+	info_table_begin(h, "disk");
+	info_append_int(h, "data_files", lsm_env->data_file_count);
+	info_append_int(h, "data_size", lsm_env->disk_data_size);
+	info_append_int(h, "index_size", lsm_env->disk_index_size);
+	info_append_int(h, "dump_total", lsm_env->dump_total);
+	info_append_int(h, "compact_total", lsm_env->compact_total);
+	info_table_end(h);
+}
+
 void
 vinyl_engine_stat(struct vinyl_engine *vinyl, struct info_handler *h)
 {
@@ -307,6 +321,7 @@ vinyl_engine_stat(struct vinyl_engine *vinyl, struct info_handler *h)
 	vy_info_append_quota(env, h);
 	vy_info_append_tx(env, h);
 	vy_info_append_memory(env, h);
+	vy_info_append_disk(env, h);
 	info_end(h);
 }
 
@@ -476,8 +491,12 @@ vinyl_engine_reset_stat(struct engine *engine)
 {
 	struct vy_env *env = vy_env(engine);
 	struct tx_manager *xm = env->xm;
+	struct vy_lsm_env *lsm_env = &env->lsm_env;
 
 	memset(&xm->stat, 0, sizeof(xm->stat));
+
+	lsm_env->dump_total = 0;
+	lsm_env->compact_total = 0;
 }
 
 /** }}} Introspection */

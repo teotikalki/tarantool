@@ -91,6 +91,22 @@ struct vy_lsm_env {
 	size_t bloom_size;
 	/** Size of memory used for page index. */
 	size_t page_index_size;
+	/** Total number of data files (*.run). */
+	size_t data_file_count;
+	/** Size of data stored on disk (uncompressed). */
+	size_t disk_data_size;
+	/** Size of index stored on disk (uncompressed). */
+	size_t disk_index_size;
+	/**
+	 * Total number of bytes written to disk by dump tasks
+	 * (uncompressed).
+	 */
+	int64_t dump_total;
+	/**
+	 * Total number of bytes written to disk by compaction
+	 * tasks (uncompressed).
+	 */
+	int64_t compact_total;
 	/** Memory pool for vy_history_node allocations. */
 	struct mempool history_node_pool;
 };

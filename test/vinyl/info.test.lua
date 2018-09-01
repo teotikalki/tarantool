@@ -206,6 +206,10 @@ box.rollback()
 -- Global statistics.
 --
 
+-- dump and compaction totals
+gstat().disk.dump_total == istat().disk.dump.out.bytes
+gstat().disk.compact_total == istat().disk.compact.out.bytes
+
 -- use memory
 st = gstat()
 put(1)
@@ -342,6 +346,8 @@ i1:bsize() == st1.memory.index_size
 i2:bsize() == st2.memory.index_size
 gst.memory.page_index == 0
 gst.memory.bloom_filter == 0
+gst.disk.data_size == 0
+gst.disk.index_size == 0
 
 box.snapshot()
 gst = gstat()
@@ -357,6 +363,8 @@ i1:bsize() == st1.disk.index_size + st1.disk.bloom_size
 i2:bsize() == st2.disk.index_size + st2.disk.bloom_size + st2.disk.bytes
 gst.memory.page_index == st1.disk.index_size + st2.disk.index_size
 gst.memory.bloom_filter == st1.disk.bloom_size + st2.disk.bloom_size
+gst.disk.data_size == s:bsize()
+gst.disk.index_size == i1:bsize() + i2:bsize()
 
 for i = 1, 100, 2 do s:delete(i) end
 for i = 2, 100, 2 do s:replace{i, i, pad()} end
@@ -392,12 +400,16 @@ i1:bsize() == st1.disk.index_size + st1.disk.bloom_size
 i2:bsize() == st2.disk.index_size + st2.disk.bloom_size + st2.disk.bytes
 gst.memory.page_index == st1.disk.index_size + st2.disk.index_size
 gst.memory.bloom_filter == st1.disk.bloom_size + st2.disk.bloom_size
+gst.disk.data_size == s:bsize()
+gst.disk.index_size == i1:bsize() + i2:bsize()
 
 s:drop()
 
 gst = gstat()
 gst.memory.page_index == 0
 gst.memory.bloom_filter == 0
+gst.disk.data_size == 0
+gst.disk.index_size == 0
 
 test_run:cmd('switch default')
 test_run:cmd('stop server test')

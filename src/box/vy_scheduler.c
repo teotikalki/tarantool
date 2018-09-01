@@ -1117,6 +1117,7 @@ vy_task_dump_complete(struct vy_task *task)
 	 */
 	vy_lsm_add_run(lsm, new_run);
 	vy_stmt_counter_add_disk(&lsm->stat.disk.dump.out, &new_run->count);
+	lsm->env->dump_total += new_run->count.bytes;
 
 	/* Drop the reference held by the task. */
 	vy_run_unref(new_run);
@@ -1457,6 +1458,7 @@ vy_task_compact_complete(struct vy_task *task)
 		vy_lsm_add_run(lsm, new_run);
 		vy_stmt_counter_add_disk(&lsm->stat.disk.compact.out,
 					 &new_run->count);
+		lsm->env->compact_total += new_run->count.bytes;
 		/* Drop the reference held by the task. */
 		vy_run_unref(new_run);
 	} else
