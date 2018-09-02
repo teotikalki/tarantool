@@ -110,8 +110,8 @@ struct vy_range {
 	 * If this flag is set, the range must be scheduled for
 	 * major compaction, i.e. its compact_priority must be
 	 * raised to max (slice_count). The flag is set by
-	 * vy_range_force_compaction() and cleared automatically
-	 * when all slices of the range have been compacted.
+	 * vy_lsm_force_compaction() and cleared when the range
+	 * is scheduled for compaction.
 	 */
 	bool needs_compaction;
 	/** Number of times the range was compacted. */
@@ -228,10 +228,6 @@ vy_range_add_slice_before(struct vy_range *range, struct vy_slice *slice,
 /** Remove a run slice from a range's list. */
 void
 vy_range_remove_slice(struct vy_range *range, struct vy_slice *slice);
-
-/** Mark a range for major compaction. */
-void
-vy_range_force_compaction(struct vy_range *range);
 
 /**
  * Update compaction priority of a range.

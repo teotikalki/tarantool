@@ -1604,6 +1604,8 @@ vy_task_compact_new(struct vy_scheduler *scheduler, struct vy_lsm *lsm,
 	assert(n == 0);
 	assert(new_run->dump_lsn >= 0);
 
+	range->needs_compaction = false;
+
 	task->range = range;
 	task->new_run = new_run;
 	task->wi = wi;
