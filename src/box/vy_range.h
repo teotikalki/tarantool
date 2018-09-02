@@ -106,6 +106,15 @@ struct vy_range {
 	 * how we  decide how many runs to compact next time.
 	 */
 	int compact_priority;
+	/** Number of statements that needs to be compacted. */
+	struct vy_stmt_counter compact_count;
+	/**
+	 * Set if compaction doesn't manage to keep this LSM tree
+	 * in a good shape, because there are too many dumps.
+	 * Updated by vy_range_update_compact_priority() along
+	 * with compaction priority.
+	 */
+	bool in_compaction_debt;
 	/**
 	 * If this flag is set, the range must be scheduled for
 	 * major compaction, i.e. its compact_priority must be

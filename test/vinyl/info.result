@@ -163,11 +163,17 @@ istat()
         rows: 0
         bytes: 0
     compact:
+      out:
+        rows: 0
+        bytes: 0
       in:
         rows: 0
         bytes: 0
       count: 0
-      out:
+      debt:
+        rows: 0
+        bytes: 0
+      queue:
         rows: 0
         bytes: 0
     iterator:
@@ -213,6 +219,8 @@ gstat()
 - disk:
     dump_total: 0
     data_size: 0
+    compact_debt: 0
+    compact_queue: 0
     data_files: 0
     compact_total: 0
     index_size: 0
@@ -976,11 +984,17 @@ istat()
         rows: 0
         bytes: 0
     compact:
+      out:
+        rows: 0
+        bytes: 0
       in:
         rows: 0
         bytes: 0
       count: 0
-      out:
+      debt:
+        rows: 0
+        bytes: 0
+      queue:
         rows: 0
         bytes: 0
     iterator:
@@ -1026,6 +1040,8 @@ gstat()
 - disk:
     dump_total: 0
     data_size: 104300
+    compact_debt: 0
+    compact_queue: 0
     data_files: 2
     compact_total: 0
     index_size: 1190

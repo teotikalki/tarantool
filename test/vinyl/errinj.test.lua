@@ -850,3 +850,37 @@ fiber.sleep(0)
 s:create_index('sk', {parts = {2, 'unsigned'}})
 s:select()
 s:drop()
+
+-- Check compact.queue and compact.debt statistics.
+s = box.schema.space.create('test', {engine = 'vinyl'})
+i = s:create_index('pk', {run_count_per_level = 2})
+function dump() for i = 1, 10 do s:replace{i} end box.snapshot() end
+dump()
+dump()
+i:stat().disk.compact.queue -- none
+i:stat().disk.compact.debt -- none
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', true)
+dump()
+i:stat().disk.compact.queue -- 30 statements
+i:stat().disk.compact.debt -- none
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+dump()
+i:stat().disk.compact.queue -- 40 statements
+i:stat().disk.compact.debt -- none
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+dump()
+i:stat().disk.compact.queue -- 50 statements
+i:stat().disk.compact.debt -- 50 statements
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', false)
+while i:stat().disk.compact.count < 2 do fiber.sleep(0.01) end
+i:stat().disk.compact.queue -- none
+i:stat().disk.compact.debt -- none
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+s:drop()

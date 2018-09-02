@@ -292,19 +292,19 @@ vy_range_update_compact_priority(struct vy_range *range,
 	assert(opts->run_count_per_level > 0);
 	assert(opts->run_size_ratio > 1);
 
+	range->compact_priority = 0;
+	range->in_compaction_debt = false;
+	vy_stmt_counter_reset(&range->compact_count);
+
 	if (range->slice_count <= 1) {
 		/* Nothing to compact. */
-		range->compact_priority = 0;
 		range->needs_compaction = false;
 		return;
 	}
-	if (range->needs_compaction) {
-		range->compact_priority = range->slice_count;
-		return;
-	}
 
-	range->compact_priority = 0;
-
+	/* Total number of statements in checked runs. */
+	struct vy_stmt_counter total_stmt_count;
+	vy_stmt_counter_reset(&total_stmt_count);
 	/* Total number of checked runs. */
 	uint32_t total_run_count = 0;
 	/* The total size of runs checked so far. */
@@ -333,6 +333,7 @@ vy_range_update_compact_priority(struct vy_range *range,
 		total_size += size;
 		level_run_count++;
 		total_run_count++;
+		vy_stmt_counter_add_disk(&total_stmt_count, &slice->count);
 		while (size > target_run_size) {
 			/*
 			 * The run size exceeds the threshold
@@ -362,7 +363,8 @@ vy_range_update_compact_priority(struct vy_range *range,
 			 * we find an appropriate level for it.
 			 */
 		}
-		if (level_run_count > opts->run_count_per_level) {
+		if (range->needs_compaction ||
+		    level_run_count > opts->run_count_per_level) {
 			/*
 			 * The number of runs at the current level
 			 * exceeds the configured maximum. Arrange
@@ -370,8 +372,18 @@ vy_range_update_compact_priority(struct vy_range *range,
 			 * this level and upper levels.
 			 */
 			range->compact_priority = total_run_count;
+			range->compact_count = total_stmt_count;
 			est_new_run_size = total_size;
 		}
+		/*
+		 * If the number of runs on any level is twice as
+		 * many as run_count_per_level, we would schedule
+		 * compaction for another time had the previously
+		 * scheduled compaction task completed. This means
+		 * that compaction doesn't keep up with dumps.
+		 */
+		if (level_run_count > opts->run_count_per_level * 2)
+			range->in_compaction_debt = true;
 	}
 }
 

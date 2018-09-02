@@ -252,6 +252,8 @@ vy_lsm_delete(struct vy_lsm *lsm)
 	assert(lsm->env->lsm_count > 0);
 
 	lsm->env->lsm_count--;
+	lsm->env->compact_queue -= lsm->stat.disk.compact.queue.bytes;
+	lsm->env->compact_debt -= lsm->stat.disk.compact.debt.bytes;
 
 	if (lsm->pk != NULL)
 		vy_lsm_unref(lsm->pk);
@@ -759,12 +761,28 @@ void
 vy_lsm_acct_range(struct vy_lsm *lsm, struct vy_range *range)
 {
 	histogram_collect(lsm->run_hist, range->slice_count);
+	vy_stmt_counter_add(&lsm->stat.disk.compact.queue,
+			    &range->compact_count);
+	lsm->env->compact_queue += range->compact_count.bytes;
+	if (range->in_compaction_debt) {
+		vy_stmt_counter_add(&lsm->stat.disk.compact.debt,
+				    &range->compact_count);
+		lsm->env->compact_debt += range->compact_count.bytes;
+	}
 }
 
 void
 vy_lsm_unacct_range(struct vy_lsm *lsm, struct vy_range *range)
 {
 	histogram_discard(lsm->run_hist, range->slice_count);
+	vy_stmt_counter_sub(&lsm->stat.disk.compact.queue,
+			    &range->compact_count);
+	lsm->env->compact_queue -= range->compact_count.bytes;
+	if (range->in_compaction_debt) {
+		vy_stmt_counter_sub(&lsm->stat.disk.compact.debt,
+				    &range->compact_count);
+		lsm->env->compact_debt -= range->compact_count.bytes;
+	}
 }
 
 int
@@ -1179,8 +1197,10 @@ vy_lsm_force_compaction(struct vy_lsm *lsm)
 
 	vy_range_tree_ifirst(lsm->tree, &it);
 	while ((range = vy_range_tree_inext(&it)) != NULL) {
+		vy_lsm_unacct_range(lsm, range);
 		range->needs_compaction = true;
 		vy_range_update_compact_priority(range, &lsm->opts);
+		vy_lsm_acct_range(lsm, range);
 	}
 
 	vy_range_heap_update_all(&lsm->range_heap);

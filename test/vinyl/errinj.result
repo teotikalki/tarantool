@@ -2118,3 +2118,132 @@ s:select()
 s:drop()
 ---
 ...
+-- Check compact.queue and compact.debt statistics.
+s = box.schema.space.create('test', {engine = 'vinyl'})
+---
+...
+i = s:create_index('pk', {run_count_per_level = 2})
+---
+...
+function dump() for i = 1, 10 do s:replace{i} end box.snapshot() end
+---
+...
+dump()
+---
+...
+dump()
+---
+...
+i:stat().disk.compact.queue -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.debt -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+---
+- true
+...
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+---
+- true
+...
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', true)
+---
+- ok
+...
+dump()
+---
+...
+i:stat().disk.compact.queue -- 30 statements
+---
+- rows: 30
+  bytes: 471
+...
+i:stat().disk.compact.debt -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+---
+- true
+...
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+---
+- true
+...
+dump()
+---
+...
+i:stat().disk.compact.queue -- 40 statements
+---
+- rows: 40
+  bytes: 628
+...
+i:stat().disk.compact.debt -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+---
+- true
+...
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+---
+- true
+...
+dump()
+---
+...
+i:stat().disk.compact.queue -- 50 statements
+---
+- rows: 50
+  bytes: 785
+...
+i:stat().disk.compact.debt -- 50 statements
+---
+- rows: 50
+  bytes: 785
+...
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+---
+- true
+...
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+---
+- true
+...
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', false)
+---
+- ok
+...
+while i:stat().disk.compact.count < 2 do fiber.sleep(0.01) end
+---
+...
+i:stat().disk.compact.queue -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.debt -- none
+---
+- rows: 0
+  bytes: 0
+...
+i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
+---
+- true
+...
+i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+---
+- true
+...
+s:drop()
+---
+...
