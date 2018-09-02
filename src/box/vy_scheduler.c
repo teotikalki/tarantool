@@ -96,6 +96,10 @@ struct vy_worker {
 	struct vy_task *task;
 	/** Link in vy_scheduler::idle_workers. */
 	struct stailq_entry in_idle;
+	/** Time when this worker became idle. */
+	double idle_start;
+	/** How much time this worker have been idle. */
+	double idle_time;
 	/** Route for sending deferred DELETEs back to tx. */
 	struct cmsg_hop deferred_delete_route[2];
 };
@@ -346,6 +350,7 @@ vy_scheduler_start_workers(struct vy_scheduler *scheduler)
 	if (scheduler->worker_pool == NULL)
 		panic("failed to allocate vinyl worker pool");
 
+	double now = ev_monotonic_now(loop());
 	for (int i = 0; i < scheduler->worker_pool_size; i++) {
 		char name[FIBER_NAME_MAX];
 		snprintf(name, sizeof(name), "vinyl.writer.%d", i);
@@ -355,6 +360,7 @@ vy_scheduler_start_workers(struct vy_scheduler *scheduler)
 		cpipe_create(&worker->worker_pipe, name);
 		stailq_add_tail_entry(&scheduler->idle_workers,
 				      worker, in_idle);
+		worker->idle_start = now;
 
 		struct cmsg_hop *route = worker->deferred_delete_route;
 		route[0].f = vy_deferred_delete_batch_process_f;
@@ -407,6 +413,7 @@ vy_scheduler_create(struct vy_scheduler *scheduler, int write_threads,
 
 	diag_create(&scheduler->diag);
 	fiber_cond_create(&scheduler->dump_cond);
+	scheduler->dump_end = ev_monotonic_now(loop());
 
 	fiber_start(scheduler->scheduler_fiber, scheduler);
 }
@@ -548,6 +555,27 @@ vy_scheduler_force_compaction(struct vy_scheduler *scheduler,
 }
 
 /**
+ * Return total time workers have spent idle.
+ */
+static double
+vy_scheduler_get_idle_time(struct vy_scheduler *scheduler)
+{
+	double idle_time = 0;
+	double now = ev_monotonic_now(loop());
+
+	struct vy_worker *worker;
+	for (int i = 0; i < scheduler->worker_pool_size; i++) {
+		worker = &scheduler->worker_pool[i];
+		idle_time += worker->idle_time;
+	}
+
+	stailq_foreach_entry(worker, &scheduler->idle_workers, in_idle)
+		idle_time += now - worker->idle_start;
+
+	return idle_time;
+}
+
+/**
  * Check whether the current dump round is complete.
  * If it is, free memory and proceed to the next dump round.
  */
@@ -585,7 +613,11 @@ vy_scheduler_complete_dump(struct vy_scheduler *scheduler)
 	 */
 	double now = ev_monotonic_now(loop());
 	double dump_duration = now - scheduler->dump_start;
-	scheduler->dump_start = now;
+	double idle_time = vy_scheduler_get_idle_time(scheduler);
+	scheduler->idle_ratio = (idle_time - scheduler->idle_time_at_dump) /
+		(now - scheduler->dump_end) / scheduler->worker_pool_size;
+	scheduler->idle_time_at_dump = idle_time;
+	scheduler->dump_start = scheduler->dump_end = now;
 	scheduler->dump_generation = min_generation;
 	scheduler->dump_complete_cb(scheduler,
 			min_generation - 1, dump_duration);
@@ -1900,7 +1932,9 @@ vy_scheduler_f(va_list va)
 	while (scheduler->scheduler_fiber != NULL) {
 		struct stailq processed_tasks;
 		struct vy_task *task, *next;
+		struct vy_worker *worker;
 		int tasks_failed = 0, tasks_done = 0;
+		double now = ev_monotonic_now(loop());
 
 		/* Get the list of processed tasks. */
 		stailq_create(&processed_tasks);
@@ -1913,8 +1947,10 @@ vy_scheduler_f(va_list va)
 				tasks_failed++;
 			else
 				tasks_done++;
+			worker = task->worker;
 			stailq_add_entry(&scheduler->idle_workers,
-					 task->worker, in_idle);
+					 worker, in_idle);
+			worker->idle_start = now;
 			vy_task_delete(task);
 			scheduler->idle_worker_count++;
 			assert(scheduler->idle_worker_count <=
@@ -1951,11 +1987,13 @@ vy_scheduler_f(va_list va)
 
 		/* Queue the task and notify workers if necessary. */
 		assert(!stailq_empty(&scheduler->idle_workers));
-		task->worker = stailq_shift_entry(&scheduler->idle_workers,
-						  struct vy_worker, in_idle);
+		worker = stailq_shift_entry(&scheduler->idle_workers,
+					    struct vy_worker, in_idle);
+		worker->idle_time += now - worker->idle_start;
 		scheduler->idle_worker_count--;
+		task->worker = worker;
 		cmsg_init(&task->cmsg, vy_task_execute_route);
-		cpipe_push(&task->worker->worker_pipe, &task->cmsg);
+		cpipe_push(&worker->worker_pipe, &task->cmsg);
 
 		fiber_reschedule();
 		continue;

@@ -311,6 +311,7 @@ vy_info_append_disk(struct vy_env *env, struct info_handler *h)
 	info_append_int(h, "compact_total", lsm_env->compact_total);
 	info_append_int(h, "compact_queue", lsm_env->compact_queue);
 	info_append_int(h, "compact_debt", lsm_env->compact_debt);
+	info_append_double(h, "idle_ratio", env->scheduler.idle_ratio);
 	info_table_end(h);
 }
 

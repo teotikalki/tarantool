@@ -136,6 +136,18 @@ struct vy_scheduler {
 	int dump_task_count;
 	/** Time when the current dump round started. */
 	double dump_start;
+	/** Time when the last dump round ended. */
+	double dump_end;
+	/**
+	 * Total amount of time worker threads have been idle,
+	 * taken at the time when the last dump round completed.
+	 */
+	double idle_time_at_dump;
+	/**
+	 * How much time worker threads were idle between the last
+	 * two dump, relative to the dump period.
+	 */
+	double idle_ratio;
 	/** Signaled on dump round completion. */
 	struct fiber_cond dump_cond;
 	/**

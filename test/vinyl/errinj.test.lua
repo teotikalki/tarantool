@@ -883,4 +883,26 @@ i:stat().disk.compact.queue -- none
 i:stat().disk.compact.debt -- none
 i:stat().disk.compact.queue.bytes == box.stat.vinyl().disk.compact_queue
 i:stat().disk.compact.debt.bytes == box.stat.vinyl().disk.compact_debt
+s:truncate()
+box.stat.reset()
+
+-- Check disk.idle_ratio statistic.
+errinj.set('ERRINJ_VY_RUN_WRITE_TIMEOUT', 0.01)
+start = fiber.time()
+dump()
+fiber.sleep(fiber.time() - start)
+dump()
+-- one worker is busy half of the time
+expected = 1 - 1 / (2 * box.cfg.vinyl_write_threads)
+math.abs(box.stat.vinyl().disk.idle_ratio - expected) < 0.1
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', true)
+start = fiber.time()
+dump()
+fiber.sleep(fiber.time() - start)
+dump()
+-- one worker is busy all the time, plus one half of the time
+expected = 1 - 3 / (2 * box.cfg.vinyl_write_threads)
+math.abs(box.stat.vinyl().disk.idle_ratio - expected) < 0.1
+errinj.set('ERRINJ_VY_COMPACTION_DELAY', false)
+while i:stat().disk.compact.count < 1 do fiber.sleep(0.01) end
 s:drop()
